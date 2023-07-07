@@ -3646,8 +3646,10 @@ func BenchmarkMakeStrategiesDotYAMLFirstInnerLastParams(b *testing.B) {
 	})
 	b.Run("Mid config", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			dses := []DeliveryService{ds}
-			MakeStrategiesDotYAML(dses, mid0, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, opt)
+			for _, ds := range dsesall {
+				dses := []DeliveryService{ds}
+				MakeStrategiesDotYAML(dses, mid0, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, opt)
+			}
 		}
 	})
 	b.Run("Opl config", func(b *testing.B) {
