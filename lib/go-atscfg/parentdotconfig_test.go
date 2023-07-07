@@ -5171,3 +5171,4375 @@ func makeParentDS() *DeliveryService {
 	ds.MultiSiteOrigin = util.BoolPtr(false)
 	return ds
 }
+
+// Benchmarking
+func BenchmarkMakeParentDotConfig(b *testing.B) {
+	hdr := &ParentConfigOpts{AddComments: false, HdrComment: "myHeaderComment"}
+
+	ds0 := makeParentDS()
+	ds0Type := tc.DSTypeHTTP
+	ds0.Type = &ds0Type
+	ds0.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreUseInCacheKeyAndPassUp))
+	ds0.OrgServerFQDN = util.StrPtr("http://ds0.example.net")
+
+	ds1 := makeParentDS()
+	ds1.ID = util.IntPtr(43)
+	ds1Type := tc.DSTypeDNS
+	ds1.Type = &ds1Type
+	ds1.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreDrop))
+	ds1.OrgServerFQDN = util.StrPtr("http://ds1.example.net")
+
+	dses := []DeliveryService{*ds0, *ds1}
+
+	parentConfigParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       ParentConfigParamQStringHandling,
+			ConfigFile: "parent.config",
+			Value:      "myQStringHandlingParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      tc.AlgorithmConsistentHash,
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigParamQString,
+			ConfigFile: "parent.config",
+			Value:      "myQstringParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+	}
+
+	serverParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       "trafficserver",
+			ConfigFile: "package",
+			Value:      "7",
+			Profiles:   []byte(`["global"]`),
+		},
+	}
+
+	server := makeTestParentServer()
+
+	mid0 := makeTestParentServer()
+	mid0.Cachegroup = util.StrPtr("midCG")
+	mid0.HostName = util.StrPtr("mymid0")
+	mid0.ID = util.IntPtr(45)
+	setIP(mid0, "192.168.2.2")
+
+	mid1 := makeTestParentServer()
+	mid1.Cachegroup = util.StrPtr("midCG")
+	mid1.HostName = util.StrPtr("mymid1")
+	mid1.ID = util.IntPtr(46)
+	setIP(mid1, "192.168.2.3")
+
+	servers := []Server{*server, *mid0, *mid1}
+
+	topologies := []tc.Topology{}
+	serverCapabilities := map[int]map[ServerCapability]struct{}{}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{}
+
+	eCG := &tc.CacheGroupNullable{}
+	eCG.Name = server.Cachegroup
+	eCG.ID = server.CachegroupID
+	eCG.ParentName = mid0.Cachegroup
+	eCG.ParentCachegroupID = mid0.CachegroupID
+	eCGType := tc.CacheGroupEdgeTypeName
+	eCG.Type = &eCGType
+
+	mCG := &tc.CacheGroupNullable{}
+	mCG.Name = mid0.Cachegroup
+	mCG.ID = mid0.CachegroupID
+	mCGType := tc.CacheGroupMidTypeName
+	mCG.Type = &mCGType
+
+	cgs := []tc.CacheGroupNullable{*eCG, *mCG}
+
+	dss := []DeliveryServiceServer{
+		DeliveryServiceServer{
+			Server:          *server.ID,
+			DeliveryService: *ds0.ID,
+		},
+		DeliveryServiceServer{
+			Server:          *server.ID,
+			DeliveryService: *ds1.ID,
+		},
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+	}
+}
+
+func BenchmarkMakeParentDotConfigCapabilities(b *testing.B) {
+	hdr := &ParentConfigOpts{AddComments: false, HdrComment: "myHeaderComment"}
+
+	ds0 := makeParentDS()
+	ds0Type := tc.DSTypeHTTP
+	ds0.Type = &ds0Type
+	ds0.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreUseInCacheKeyAndPassUp))
+	ds0.OrgServerFQDN = util.StrPtr("http://ds0.example.net")
+
+	dses := []DeliveryService{*ds0}
+
+	parentConfigParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       ParentConfigParamQStringHandling,
+			ConfigFile: "parent.config",
+			Value:      "myQStringHandlingParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      tc.AlgorithmConsistentHash,
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigParamQString,
+			ConfigFile: "parent.config",
+			Value:      "myQstringParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+	}
+
+	serverParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       "trafficserver",
+			ConfigFile: "package",
+			Value:      "7",
+			Profiles:   []byte(`["global"]`),
+		},
+	}
+
+	server := makeTestParentServer()
+
+	mid0 := makeTestParentServer()
+	mid0.HostName = util.StrPtr("my-parent-nocaps")
+	mid0.Cachegroup = util.StrPtr("midCG")
+	mid0.HostName = util.StrPtr("mymid0")
+	mid0.ID = util.IntPtr(45)
+	mid0.CachegroupID = util.IntPtr(423)
+	setIP(mid0, "192.168.2.2")
+
+	mid1 := makeTestParentServer()
+	mid1.HostName = util.StrPtr("my-parent-fooonly")
+	mid1.Cachegroup = util.StrPtr("midCG")
+	mid1.ID = util.IntPtr(46)
+	mid1.CachegroupID = util.IntPtr(423)
+	setIP(mid1, "192.168.2.3")
+
+	mid2 := makeTestParentServer()
+	mid2.HostName = util.StrPtr("my-parent-foobar")
+	mid2.Cachegroup = util.StrPtr("midCG")
+	mid2.ID = util.IntPtr(47)
+	mid2.CachegroupID = util.IntPtr(423)
+	setIP(mid1, "192.168.2.4")
+
+	servers := []Server{*server, *mid0, *mid1, *mid2}
+
+	topologies := []tc.Topology{}
+	serverCapabilities := map[int]map[ServerCapability]struct{}{
+		*server.ID: map[ServerCapability]struct{}{"FOO": {}},
+		*mid1.ID:   map[ServerCapability]struct{}{"FOO": {}},
+		*mid2.ID:   map[ServerCapability]struct{}{"FOO": {}, "BAR": {}},
+	}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{
+		*ds0.ID: map[ServerCapability]struct{}{"FOO": {}},
+	}
+
+	eCG := &tc.CacheGroupNullable{}
+	eCG.Name = server.Cachegroup
+	eCG.ID = server.CachegroupID
+	eCG.ParentName = mid0.Cachegroup
+	eCG.ParentCachegroupID = mid0.CachegroupID
+	eCGType := tc.CacheGroupEdgeTypeName
+	eCG.Type = &eCGType
+
+	mCG := &tc.CacheGroupNullable{}
+	mCG.Name = mid0.Cachegroup
+	mCG.ID = mid0.CachegroupID
+	mCGType := tc.CacheGroupMidTypeName
+	mCG.Type = &mCGType
+
+	cgs := []tc.CacheGroupNullable{*eCG, *mCG}
+
+	dss := []DeliveryServiceServer{
+		DeliveryServiceServer{
+			Server:          *server.ID,
+			DeliveryService: *ds0.ID,
+		},
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+	}
+}
+
+func BenchmarkMakeParentDotConfigMSOSecondaryParent(b *testing.B) {
+	hdr := &ParentConfigOpts{AddComments: false, HdrComment: "myHeaderComment"}
+
+	ds0 := makeParentDS()
+	ds0Type := tc.DSTypeHTTP
+	ds0.Type = &ds0Type
+	ds0.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreUseInCacheKeyAndPassUp))
+	ds0.OrgServerFQDN = util.StrPtr("http://ds0.example.net")
+	ds0.MultiSiteOrigin = util.BoolPtr(true)
+	dses := []DeliveryService{*ds0}
+
+	parentConfigParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       ParentConfigParamQStringHandling,
+			ConfigFile: "parent.config",
+			Value:      "myQStringHandlingParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      tc.AlgorithmConsistentHash,
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigParamQString,
+			ConfigFile: "parent.config",
+			Value:      "myQstringParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+	}
+
+	serverParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       "trafficserver",
+			ConfigFile: "package",
+			Value:      "7",
+			Profiles:   []byte(`["global"]`),
+		},
+	}
+
+	server := makeTestParentServer()
+
+	mid0 := makeTestParentServer()
+	mid0.Cachegroup = util.StrPtr("midCG0")
+	mid0.CachegroupID = util.IntPtr(500)
+	mid0.HostName = util.StrPtr("my-parent-0")
+	mid0.DomainName = util.StrPtr("my-parent-0-domain")
+	mid0.ID = util.IntPtr(45)
+	setIP(mid0, "192.168.2.2")
+
+	mid1 := makeTestParentServer()
+	mid1.Cachegroup = util.StrPtr("midCG1")
+	mid1.CachegroupID = util.IntPtr(501)
+	mid1.HostName = util.StrPtr("my-parent-1")
+	mid1.DomainName = util.StrPtr("my-parent-1-domain")
+	mid1.ID = util.IntPtr(46)
+	setIP(mid1, "192.168.2.3")
+
+	servers := []Server{*server, *mid0, *mid1}
+
+	topologies := []tc.Topology{}
+	serverCapabilities := map[int]map[ServerCapability]struct{}{}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{}
+
+	eCG := &tc.CacheGroupNullable{}
+	eCG.Name = server.Cachegroup
+	eCG.ID = server.CachegroupID
+	eCG.ParentName = mid0.Cachegroup
+	eCG.ParentCachegroupID = mid0.CachegroupID
+	eCG.SecondaryParentName = mid1.Cachegroup
+	eCG.SecondaryParentCachegroupID = mid1.CachegroupID
+	eCGType := tc.CacheGroupEdgeTypeName
+	eCG.Type = &eCGType
+
+	mCG := &tc.CacheGroupNullable{}
+	mCG.Name = mid0.Cachegroup
+	mCG.ID = mid0.CachegroupID
+	mCGType := tc.CacheGroupMidTypeName
+	mCG.Type = &mCGType
+
+	mCG1 := &tc.CacheGroupNullable{}
+	mCG1.Name = mid1.Cachegroup
+	mCG1.ID = mid1.CachegroupID
+	mCGType1 := tc.CacheGroupMidTypeName
+	mCG1.Type = &mCGType1
+
+	cgs := []tc.CacheGroupNullable{*eCG, *mCG, *mCG1}
+
+	dss := []DeliveryServiceServer{
+		DeliveryServiceServer{
+			Server:          *server.ID,
+			DeliveryService: *ds0.ID,
+		},
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+	}
+}
+
+func BenchmarkMakeParentDotConfigMSONoPrimaryParent(b *testing.B) {
+	hdr := &ParentConfigOpts{AddComments: false, HdrComment: "myHeaderComment"}
+
+	ds0 := makeParentDS()
+	ds0Type := tc.DSTypeHTTP
+	ds0.Type = &ds0Type
+	ds0.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreUseInCacheKeyAndPassUp))
+	ds0.OrgServerFQDN = util.StrPtr("http://ds0.example.net")
+	ds0.MultiSiteOrigin = util.BoolPtr(true)
+	dses := []DeliveryService{*ds0}
+
+	parentConfigParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       ParentConfigParamQStringHandling,
+			ConfigFile: "parent.config",
+			Value:      "myQStringHandlingParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      tc.AlgorithmConsistentHash,
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigParamQString,
+			ConfigFile: "parent.config",
+			Value:      "myQstringParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+	}
+
+	serverParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       "trafficserver",
+			ConfigFile: "package",
+			Value:      "7",
+			Profiles:   []byte(`["global"]`),
+		},
+	}
+
+	server := makeTestParentServer()
+
+	mid0 := makeTestParentServer()
+	mid0.Cachegroup = util.StrPtr("midCG0")
+	mid0.CachegroupID = util.IntPtr(500)
+	mid0.HostName = util.StrPtr("my-parent-0")
+	mid0.DomainName = util.StrPtr("my-parent-0-domain")
+	mid0.Status = util.StrPtr(string(tc.CacheStatusAdminDown))
+	mid0.ID = util.IntPtr(45)
+	setIP(mid0, "192.168.2.2")
+
+	mid1 := makeTestParentServer()
+	mid1.Cachegroup = util.StrPtr("midCG1")
+	mid1.CachegroupID = util.IntPtr(501)
+	mid1.HostName = util.StrPtr("my-parent-1")
+	mid1.DomainName = util.StrPtr("my-parent-1-domain")
+	mid1.ID = util.IntPtr(46)
+	setIP(mid1, "192.168.2.3")
+
+	servers := []Server{*server, *mid0, *mid1}
+
+	topologies := []tc.Topology{}
+	serverCapabilities := map[int]map[ServerCapability]struct{}{}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{}
+
+	eCG := &tc.CacheGroupNullable{}
+	eCG.Name = server.Cachegroup
+	eCG.ID = server.CachegroupID
+	eCG.ParentName = mid0.Cachegroup
+	eCG.ParentCachegroupID = mid0.CachegroupID
+	eCG.SecondaryParentName = mid1.Cachegroup
+	eCG.SecondaryParentCachegroupID = mid1.CachegroupID
+	eCGType := tc.CacheGroupEdgeTypeName
+	eCG.Type = &eCGType
+
+	mCG := &tc.CacheGroupNullable{}
+	mCG.Name = mid0.Cachegroup
+	mCG.ID = mid0.CachegroupID
+	mCGType := tc.CacheGroupMidTypeName
+	mCG.Type = &mCGType
+
+	mCG1 := &tc.CacheGroupNullable{}
+	mCG1.Name = mid1.Cachegroup
+	mCG1.ID = mid1.CachegroupID
+	mCGType1 := tc.CacheGroupMidTypeName
+	mCG1.Type = &mCGType1
+
+	cgs := []tc.CacheGroupNullable{*eCG, *mCG, *mCG1}
+
+	dss := []DeliveryServiceServer{
+		DeliveryServiceServer{
+			Server:          *server.ID,
+			DeliveryService: *ds0.ID,
+		},
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+	}
+}
+
+func BenchmarkMakeParentDotConfigMSONoTpologyNoMid(b *testing.B) {
+	hdr := &ParentConfigOpts{AddComments: false, HdrComment: "myHeaderComment"}
+
+	ds0 := makeParentDS()
+	ds0Type := tc.DSTypeHTTP
+	ds0.Type = &ds0Type
+	ds0.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreUseInCacheKeyAndPassUp))
+	ds0.OrgServerFQDN = util.StrPtr("http://ds0.example.net")
+	ds0.MultiSiteOrigin = util.BoolPtr(true)
+	ds0.ProfileName = util.StrPtr("dsprofile")
+	dses := []DeliveryService{*ds0}
+
+	parentConfigParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       ParentConfigParamQStringHandling,
+			ConfigFile: "parent.config",
+			Value:      "myQStringHandlingParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      tc.AlgorithmConsistentHash,
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigParamQString,
+			ConfigFile: "parent.config",
+			Value:      "myQstringParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       "mso.parent_retry",
+			ConfigFile: "parent.config",
+			Value:      "both",
+			Profiles:   []byte(`["` + *ds0.ProfileName + `"]`),
+		},
+		tc.Parameter{
+			Name:       "mso.algorithm",
+			ConfigFile: "parent.config",
+			Value:      "consistent_hash",
+			Profiles:   []byte(`["` + *ds0.ProfileName + `"]`),
+		},
+		tc.Parameter{
+			Name:       "mso.unavailable_server_retry_responses",
+			ConfigFile: "parent.config",
+			Value:      `"500,502,503,542"`,
+			Profiles:   []byte(`["` + *ds0.ProfileName + `"]`),
+		},
+		tc.Parameter{
+			Name:       "mso.max_simple_retries",
+			ConfigFile: "parent.config",
+			Value:      "2",
+			Profiles:   []byte(`["` + *ds0.ProfileName + `"]`),
+		},
+	}
+
+	serverParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       "trafficserver",
+			ConfigFile: "package",
+			Value:      "7",
+			Profiles:   []byte(`["global"]`),
+		},
+	}
+
+	edge := makeTestParentServer()
+
+	origin0 := makeTestParentServer()
+	origin0.Cachegroup = util.StrPtr("originCG")
+	origin0.CachegroupID = util.IntPtr(500)
+	origin0.HostName = util.StrPtr("myorigin0")
+	origin0.ID = util.IntPtr(45)
+	setIP(origin0, "192.168.2.2")
+	origin0.Type = tc.OriginTypeName
+	origin0.TypeID = util.IntPtr(991)
+
+	servers := []Server{*edge, *origin0}
+
+	topologies := []tc.Topology{}
+	serverCapabilities := map[int]map[ServerCapability]struct{}{}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{}
+
+	eCG := &tc.CacheGroupNullable{}
+	eCG.Name = edge.Cachegroup
+	eCG.ID = edge.CachegroupID
+	eCG.ParentName = origin0.Cachegroup
+	eCG.ParentCachegroupID = origin0.CachegroupID
+	eCGType := tc.CacheGroupEdgeTypeName
+	eCG.Type = &eCGType
+
+	oCG := &tc.CacheGroupNullable{}
+	oCG.Name = origin0.Cachegroup
+	oCG.ID = origin0.CachegroupID
+	oCGType := tc.CacheGroupOriginTypeName
+	oCG.Type = &oCGType
+
+	cgs := []tc.CacheGroupNullable{*eCG, *oCG}
+
+	dss := []DeliveryServiceServer{
+		{
+			Server:          *edge.ID,
+			DeliveryService: *ds0.ID,
+		},
+		{
+			Server:          *origin0.ID,
+			DeliveryService: *ds0.ID,
+		},
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		MakeParentDotConfig(dses, edge, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+	}
+}
+
+func BenchmarkMakeParentDotConfigMSONoTopoMultiCG(b *testing.B) {
+	hdr := &ParentConfigOpts{AddComments: false, HdrComment: "myHeaderComment"}
+
+	ds0 := makeParentDS()
+	ds0Type := tc.DSTypeHTTP
+	ds0.Type = &ds0Type
+	ds0.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreUseInCacheKeyAndPassUp))
+	ds0.OrgServerFQDN = util.StrPtr("http://ds0.example.net")
+	ds0.MultiSiteOrigin = util.BoolPtr(true)
+
+	dses := []DeliveryService{*ds0}
+
+	parentConfigParams := []tc.Parameter{}
+
+	serverParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       "trafficserver",
+			ConfigFile: "package",
+			Value:      "9",
+			Profiles:   []byte(`["global"]`),
+		},
+	}
+
+	edge := makeTestParentServer()
+	edge.Cachegroup = util.StrPtr("edgeCG")
+	edge.CachegroupID = util.IntPtr(400)
+
+	mid := makeTestParentServer()
+	mid.Cachegroup = util.StrPtr("midCG")
+	mid.CachegroupID = util.IntPtr(500)
+	mid.HostName = util.StrPtr("mid0")
+	mid.ID = util.IntPtr(45)
+	setIP(mid, "192.168.2.2")
+
+	org0 := makeTestParentServer()
+	org0.Cachegroup = util.StrPtr("orgCG0")
+	org0.CachegroupID = util.IntPtr(501)
+	org0.HostName = util.StrPtr("org0")
+	org0.ID = util.IntPtr(46)
+	setIP(org0, "192.168.2.3")
+	org0.Type = tc.OriginTypeName
+	org0.TypeID = util.IntPtr(991)
+
+	org1 := makeTestParentServer()
+	org1.Cachegroup = util.StrPtr("orgCG1")
+	org1.CachegroupID = util.IntPtr(502)
+	org1.HostName = util.StrPtr("org1")
+	org1.ID = util.IntPtr(47)
+	setIP(org1, "192.168.2.4")
+	org1.Type = tc.OriginTypeName
+	org1.TypeID = util.IntPtr(991)
+
+	servers := []Server{*edge, *mid, *org0, *org1}
+
+	topologies := []tc.Topology{}
+	serverCapabilities := map[int]map[ServerCapability]struct{}{}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{}
+
+	eCG := &tc.CacheGroupNullable{}
+	eCG.Name = edge.Cachegroup
+	eCG.ID = edge.CachegroupID
+	eCG.ParentName = mid.Cachegroup
+	eCG.ParentCachegroupID = mid.CachegroupID
+	eCGType := tc.CacheGroupEdgeTypeName
+	eCG.Type = &eCGType
+
+	// NOTE: no parent cache groups specified
+	mCG := &tc.CacheGroupNullable{}
+	mCG.Name = mid.Cachegroup
+	mCG.ID = mid.CachegroupID
+	mCGType := tc.CacheGroupMidTypeName
+	mCG.Type = &mCGType
+
+	oCG0 := &tc.CacheGroupNullable{}
+	oCG0.Name = org0.Cachegroup
+	oCG0.ID = org0.CachegroupID
+	oCG0Type := tc.CacheGroupOriginTypeName
+	oCG0.Type = &oCG0Type
+
+	oCG1 := &tc.CacheGroupNullable{}
+	oCG1.Name = org1.Cachegroup
+	oCG1.ID = org1.CachegroupID
+	oCG1Type := tc.CacheGroupOriginTypeName
+	oCG1.Type = &oCG1Type
+
+	cgs := []tc.CacheGroupNullable{*eCG, *mCG, *oCG0, *oCG1}
+
+	dss := []DeliveryServiceServer{
+		DeliveryServiceServer{
+			Server:          *edge.ID,
+			DeliveryService: *ds0.ID,
+		},
+		DeliveryServiceServer{
+			Server:          *org0.ID,
+			DeliveryService: *ds0.ID,
+		},
+		DeliveryServiceServer{
+			Server:          *org1.ID,
+			DeliveryService: *ds0.ID,
+		},
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		MakeParentDotConfig(dses, mid, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+	}
+}
+
+func BenchmarkMakeParentDotConfigTopologies(b *testing.B) {
+	hdr := &ParentConfigOpts{AddComments: false, HdrComment: "myHeaderComment"}
+
+	ds0 := makeParentDS()
+	ds0Type := tc.DSTypeHTTP
+	ds0.Type = &ds0Type
+	ds0.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreUseInCacheKeyAndPassUp))
+	ds0.OrgServerFQDN = util.StrPtr("http://ds0.example.net")
+
+	ds1 := makeParentDS()
+	ds1.ID = util.IntPtr(43)
+	ds1Type := tc.DSTypeDNS
+	ds1.Type = &ds1Type
+	ds1.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreDrop))
+	ds1.OrgServerFQDN = util.StrPtr("http://ds1.example.net")
+	ds1.Topology = util.StrPtr("t0")
+
+	dses := []DeliveryService{*ds0, *ds1}
+
+	parentConfigParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       ParentConfigParamQStringHandling,
+			ConfigFile: "parent.config",
+			Value:      "myQStringHandlingParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      tc.AlgorithmConsistentHash,
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigParamQString,
+			ConfigFile: "parent.config",
+			Value:      "myQstringParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+	}
+
+	serverParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       "trafficserver",
+			ConfigFile: "package",
+			Value:      "7",
+			Profiles:   []byte(`["global"]`),
+		},
+	}
+
+	server := makeTestParentServer()
+	server.Cachegroup = util.StrPtr("edgeCG")
+	server.CachegroupID = util.IntPtr(400)
+
+	mid0 := makeTestParentServer()
+	mid0.Cachegroup = util.StrPtr("midCG")
+	mid0.CachegroupID = util.IntPtr(500)
+	mid0.HostName = util.StrPtr("mymid")
+	mid0.ID = util.IntPtr(45)
+	setIP(mid0, "192.168.2.2")
+
+	mid1 := makeTestParentServer()
+	mid1.Cachegroup = util.StrPtr("midCG")
+	mid1.CachegroupID = util.IntPtr(500)
+	mid1.HostName = util.StrPtr("mymid1")
+	mid1.ID = util.IntPtr(46)
+	setIP(mid1, "192.168.2.3")
+
+	servers := []Server{*server, *mid0, *mid1}
+
+	topologies := []tc.Topology{
+		tc.Topology{
+			Name: "t0",
+			Nodes: []tc.TopologyNode{
+				tc.TopologyNode{
+					Cachegroup: "edgeCG",
+					Parents:    []int{1},
+				},
+				tc.TopologyNode{
+					Cachegroup: "midCG",
+				},
+			},
+		},
+	}
+
+	serverCapabilities := map[int]map[ServerCapability]struct{}{}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{}
+
+	eCG := &tc.CacheGroupNullable{}
+	eCG.Name = server.Cachegroup
+	eCG.ID = server.CachegroupID
+	eCG.ParentName = mid0.Cachegroup
+	eCG.ParentCachegroupID = mid0.CachegroupID
+	eCGType := tc.CacheGroupEdgeTypeName
+	eCG.Type = &eCGType
+
+	mCG := &tc.CacheGroupNullable{}
+	mCG.Name = mid0.Cachegroup
+	mCG.ID = mid0.CachegroupID
+	mCGType := tc.CacheGroupMidTypeName
+	mCG.Type = &mCGType
+
+	cgs := []tc.CacheGroupNullable{*eCG, *mCG}
+
+	dss := []DeliveryServiceServer{
+		DeliveryServiceServer{
+			Server:          *server.ID,
+			DeliveryService: *ds0.ID,
+		},
+		DeliveryServiceServer{
+			Server:          *server.ID,
+			DeliveryService: *ds1.ID,
+		},
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+	}
+}
+
+func BenchmarkMakeParentDotConfigNotInTopologies(b *testing.B) {
+	hdr := &ParentConfigOpts{AddComments: false, HdrComment: "myHeaderComment"}
+
+	ds0 := makeParentDS()
+	ds0Type := tc.DSTypeHTTP
+	ds0.Type = &ds0Type
+	ds0.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreUseInCacheKeyAndPassUp))
+	ds0.OrgServerFQDN = util.StrPtr("http://ds0.example.net")
+	ds0.Topology = util.StrPtr("t0")
+
+	ds1 := makeParentDS()
+	ds1.ID = util.IntPtr(43)
+	ds1Type := tc.DSTypeDNS
+	ds1.Type = &ds1Type
+	ds1.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreDrop))
+	ds1.OrgServerFQDN = util.StrPtr("http://ds1.example.net")
+
+	dses := []DeliveryService{*ds0, *ds1}
+
+	parentConfigParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       ParentConfigParamQStringHandling,
+			ConfigFile: "parent.config",
+			Value:      "myQStringHandlingParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      tc.AlgorithmConsistentHash,
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigParamQString,
+			ConfigFile: "parent.config",
+			Value:      "myQstringParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+	}
+
+	serverParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       "trafficserver",
+			ConfigFile: "package",
+			Value:      "7",
+			Profiles:   []byte(`["global"]`),
+		},
+	}
+
+	server := makeTestParentServer()
+
+	mid0 := makeTestParentServer()
+	mid0.Cachegroup = util.StrPtr("midCG")
+	mid0.HostName = util.StrPtr("mymid0")
+	mid0.ID = util.IntPtr(45)
+	setIP(mid0, "192.168.2.2")
+
+	mid1 := makeTestParentServer()
+	mid1.Cachegroup = util.StrPtr("midCG")
+	mid1.HostName = util.StrPtr("mymid1")
+	mid1.ID = util.IntPtr(46)
+	setIP(mid1, "192.168.2.3")
+
+	servers := []Server{*server, *mid0, *mid1}
+
+	topologies := []tc.Topology{
+		tc.Topology{
+			Name: "t0",
+			Nodes: []tc.TopologyNode{
+				tc.TopologyNode{
+					Cachegroup: "otherEdgeCG",
+					Parents:    []int{1},
+				},
+				tc.TopologyNode{
+					Cachegroup: "midCG",
+				},
+			},
+		},
+	}
+
+	serverCapabilities := map[int]map[ServerCapability]struct{}{}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{}
+
+	eCG := &tc.CacheGroupNullable{}
+	eCG.Name = server.Cachegroup
+	eCG.ID = server.CachegroupID
+	eCG.ParentName = mid0.Cachegroup
+	eCG.ParentCachegroupID = mid0.CachegroupID
+	eCGType := tc.CacheGroupEdgeTypeName
+	eCG.Type = &eCGType
+
+	mCG := &tc.CacheGroupNullable{}
+	mCG.Name = mid0.Cachegroup
+	mCG.ID = mid0.CachegroupID
+	mCGType := tc.CacheGroupMidTypeName
+	mCG.Type = &mCGType
+
+	cgs := []tc.CacheGroupNullable{*eCG, *mCG}
+
+	dss := []DeliveryServiceServer{
+		DeliveryServiceServer{
+			Server:          *server.ID,
+			DeliveryService: *ds0.ID,
+		},
+		DeliveryServiceServer{
+			Server:          *server.ID,
+			DeliveryService: *ds1.ID,
+		},
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+	}
+}
+
+func BenchmarkMakeParentDotConfigTopologiesCapabilities(b *testing.B) {
+	hdr := &ParentConfigOpts{AddComments: false, HdrComment: "myHeaderComment"}
+
+	ds0 := makeParentDS()
+	ds0.ID = util.IntPtr(42)
+	ds0Type := tc.DSTypeHTTP
+	ds0.Type = &ds0Type
+	ds0.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreUseInCacheKeyAndPassUp))
+	ds0.OrgServerFQDN = util.StrPtr("http://ds0.example.net")
+	ds0.Topology = util.StrPtr("t0")
+
+	ds1 := makeParentDS()
+	ds1.ID = util.IntPtr(43)
+	ds1Type := tc.DSTypeDNS
+	ds1.Type = &ds1Type
+	ds1.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreDrop))
+	ds1.OrgServerFQDN = util.StrPtr("http://ds1.example.net")
+	ds1.Topology = util.StrPtr("t0")
+
+	ds2 := makeParentDS()
+	ds2.ID = util.IntPtr(44)
+	ds2Type := tc.DSTypeDNS
+	ds2.Type = &ds2Type
+	ds2.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreDrop))
+	ds2.OrgServerFQDN = util.StrPtr("http://ds2.example.net")
+	ds2.Topology = util.StrPtr("t0")
+
+	dses := []DeliveryService{*ds0, *ds1, *ds2}
+
+	parentConfigParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       ParentConfigParamQStringHandling,
+			ConfigFile: "parent.config",
+			Value:      "myQStringHandlingParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      tc.AlgorithmConsistentHash,
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigParamQString,
+			ConfigFile: "parent.config",
+			Value:      "myQstringParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+	}
+
+	serverParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       "trafficserver",
+			ConfigFile: "package",
+			Value:      "7",
+			Profiles:   []byte(`["global"]`),
+		},
+	}
+
+	server := makeTestParentServer()
+	server.Cachegroup = util.StrPtr("edgeCG")
+	server.CachegroupID = util.IntPtr(400)
+
+	mid0 := makeTestParentServer()
+	mid0.Cachegroup = util.StrPtr("midCG")
+	mid0.CachegroupID = util.IntPtr(500)
+	mid0.HostName = util.StrPtr("mymid0")
+	mid0.ID = util.IntPtr(45)
+	setIP(mid0, "192.168.2.2")
+
+	mid1 := makeTestParentServer()
+	mid1.Cachegroup = util.StrPtr("midCG")
+	mid1.CachegroupID = util.IntPtr(500)
+	mid1.HostName = util.StrPtr("mymid1")
+	mid1.ID = util.IntPtr(46)
+	setIP(mid1, "192.168.2.3")
+
+	servers := []Server{*server, *mid0, *mid1}
+
+	topologies := []tc.Topology{
+		tc.Topology{
+			Name: "t0",
+			Nodes: []tc.TopologyNode{
+				tc.TopologyNode{
+					Cachegroup: "edgeCG",
+					Parents:    []int{1},
+				},
+				tc.TopologyNode{
+					Cachegroup: "midCG",
+				},
+			},
+		},
+	}
+
+	serverCapabilities := map[int]map[ServerCapability]struct{}{
+		44: map[ServerCapability]struct{}{"FOO": {}},
+		45: map[ServerCapability]struct{}{"FOO": {}},
+		46: map[ServerCapability]struct{}{"FOO": {}},
+	}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{
+		*ds1.ID: map[ServerCapability]struct{}{"FOO": {}},
+		*ds2.ID: map[ServerCapability]struct{}{"BAR": {}},
+	}
+
+	eCG := &tc.CacheGroupNullable{}
+	eCG.Name = server.Cachegroup
+	eCG.ID = server.CachegroupID
+	eCG.ParentName = mid0.Cachegroup
+	eCG.ParentCachegroupID = mid0.CachegroupID
+	eCGType := tc.CacheGroupEdgeTypeName
+	eCG.Type = &eCGType
+
+	mCG := &tc.CacheGroupNullable{}
+	mCG.Name = mid0.Cachegroup
+	mCG.ID = mid0.CachegroupID
+	mCGType := tc.CacheGroupMidTypeName
+	mCG.Type = &mCGType
+
+	cgs := []tc.CacheGroupNullable{*eCG, *mCG}
+
+	dss := []DeliveryServiceServer{
+		DeliveryServiceServer{
+			Server:          *server.ID,
+			DeliveryService: *ds0.ID,
+		},
+		DeliveryServiceServer{
+			Server:          *server.ID,
+			DeliveryService: *ds1.ID,
+		},
+		DeliveryServiceServer{
+			Server:          *server.ID,
+			DeliveryService: *ds2.ID,
+		},
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+	}
+}
+
+func BenchmarkMakeParentDotConfigTopologiesOmitOfflineParents(b *testing.B) {
+	hdr := &ParentConfigOpts{AddComments: false, HdrComment: "myHeaderComment"}
+
+	ds0 := makeParentDS()
+	ds0Type := tc.DSTypeHTTP
+	ds0.Type = &ds0Type
+	ds0.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreUseInCacheKeyAndPassUp))
+	ds0.OrgServerFQDN = util.StrPtr("http://ds0.example.net")
+
+	ds1 := makeParentDS()
+	ds1.ID = util.IntPtr(43)
+	ds1Type := tc.DSTypeDNS
+	ds1.Type = &ds1Type
+	ds1.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreDrop))
+	ds1.OrgServerFQDN = util.StrPtr("http://ds1.example.net")
+	ds1.Topology = util.StrPtr("t0")
+
+	dses := []DeliveryService{*ds0, *ds1}
+
+	parentConfigParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       ParentConfigParamQStringHandling,
+			ConfigFile: "parent.config",
+			Value:      "myQStringHandlingParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      tc.AlgorithmConsistentHash,
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigParamQString,
+			ConfigFile: "parent.config",
+			Value:      "myQstringParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+	}
+
+	serverParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       "trafficserver",
+			ConfigFile: "package",
+			Value:      "7",
+			Profiles:   []byte(`["global"]`),
+		},
+	}
+
+	server := makeTestParentServer()
+	server.Cachegroup = util.StrPtr("edgeCG")
+	server.CachegroupID = util.IntPtr(400)
+
+	mid0 := makeTestParentServer()
+	mid0.Cachegroup = util.StrPtr("midCG")
+	mid0.CachegroupID = util.IntPtr(500)
+	mid0.HostName = util.StrPtr("mymid-should-omit")
+	mid0.ID = util.IntPtr(45)
+	setIP(mid0, "192.168.2.2")
+	statusOffline := string(tc.CacheStatusOffline)
+	mid0.Status = &statusOffline
+
+	mid1 := makeTestParentServer()
+	mid1.Cachegroup = util.StrPtr("midCG")
+	mid1.CachegroupID = util.IntPtr(500)
+	mid1.HostName = util.StrPtr("mymid1")
+	mid1.ID = util.IntPtr(46)
+	setIP(mid1, "192.168.2.3")
+
+	servers := []Server{*server, *mid0, *mid1}
+
+	topologies := []tc.Topology{
+		tc.Topology{
+			Name: "t0",
+			Nodes: []tc.TopologyNode{
+				tc.TopologyNode{
+					Cachegroup: "edgeCG",
+					Parents:    []int{1},
+				},
+				tc.TopologyNode{
+					Cachegroup: "midCG",
+				},
+			},
+		},
+	}
+
+	serverCapabilities := map[int]map[ServerCapability]struct{}{}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{}
+
+	eCG := &tc.CacheGroupNullable{}
+	eCG.Name = server.Cachegroup
+	eCG.ID = server.CachegroupID
+	eCG.ParentName = mid0.Cachegroup
+	eCG.ParentCachegroupID = mid0.CachegroupID
+	eCGType := tc.CacheGroupEdgeTypeName
+	eCG.Type = &eCGType
+
+	mCG := &tc.CacheGroupNullable{}
+	mCG.Name = mid0.Cachegroup
+	mCG.ID = mid0.CachegroupID
+	mCGType := tc.CacheGroupMidTypeName
+	mCG.Type = &mCGType
+
+	cgs := []tc.CacheGroupNullable{*eCG, *mCG}
+
+	dss := []DeliveryServiceServer{
+		DeliveryServiceServer{
+			Server:          *server.ID,
+			DeliveryService: *ds0.ID,
+		},
+		DeliveryServiceServer{
+			Server:          *server.ID,
+			DeliveryService: *ds1.ID,
+		},
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+	}
+}
+
+func BenchmarkMakeParentDotConfigTopologiesOmitDifferentCDNParents(b *testing.B) {
+	hdr := &ParentConfigOpts{AddComments: false, HdrComment: "myHeaderComment"}
+
+	ds0 := makeParentDS()
+	ds0Type := tc.DSTypeHTTP
+	ds0.Type = &ds0Type
+	ds0.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreUseInCacheKeyAndPassUp))
+	ds0.OrgServerFQDN = util.StrPtr("http://ds0.example.net")
+
+	ds1 := makeParentDS()
+	ds1.ID = util.IntPtr(43)
+	ds1Type := tc.DSTypeDNS
+	ds1.Type = &ds1Type
+	ds1.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreDrop))
+	ds1.OrgServerFQDN = util.StrPtr("http://ds1.example.net")
+	ds1.Topology = util.StrPtr("t0")
+
+	dses := []DeliveryService{*ds0, *ds1}
+
+	parentConfigParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       ParentConfigParamQStringHandling,
+			ConfigFile: "parent.config",
+			Value:      "myQStringHandlingParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      tc.AlgorithmConsistentHash,
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigParamQString,
+			ConfigFile: "parent.config",
+			Value:      "myQstringParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+	}
+
+	serverParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       "trafficserver",
+			ConfigFile: "package",
+			Value:      "7",
+			Profiles:   []byte(`["global"]`),
+		},
+	}
+
+	server := makeTestParentServer()
+	server.Cachegroup = util.StrPtr("edgeCG")
+	server.CachegroupID = util.IntPtr(400)
+
+	mid0 := makeTestParentServer()
+	mid0.Cachegroup = util.StrPtr("midCG")
+	mid0.CachegroupID = util.IntPtr(500)
+	mid0.HostName = util.StrPtr("mymid-should-omit")
+	mid0.ID = util.IntPtr(45)
+	setIP(mid0, "192.168.2.2")
+	mid0.CDNName = util.StrPtr("myCDN-different-than-edge")
+	mid0CDNID := *server.CDNID + 1
+	mid0.CDNID = &mid0CDNID
+
+	mid1 := makeTestParentServer()
+	mid1.Cachegroup = util.StrPtr("midCG")
+	mid1.CachegroupID = util.IntPtr(500)
+	mid1.HostName = util.StrPtr("mymid1")
+	mid1.ID = util.IntPtr(46)
+	setIP(mid1, "192.168.2.3")
+
+	servers := []Server{*server, *mid0, *mid1}
+
+	topologies := []tc.Topology{
+		tc.Topology{
+			Name: "t0",
+			Nodes: []tc.TopologyNode{
+				tc.TopologyNode{
+					Cachegroup: "edgeCG",
+					Parents:    []int{1},
+				},
+				tc.TopologyNode{
+					Cachegroup: "midCG",
+				},
+			},
+		},
+	}
+
+	serverCapabilities := map[int]map[ServerCapability]struct{}{}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{}
+
+	eCG := &tc.CacheGroupNullable{}
+	eCG.Name = server.Cachegroup
+	eCG.ID = server.CachegroupID
+	eCG.ParentName = mid0.Cachegroup
+	eCG.ParentCachegroupID = mid0.CachegroupID
+	eCGType := tc.CacheGroupEdgeTypeName
+	eCG.Type = &eCGType
+
+	mCG := &tc.CacheGroupNullable{}
+	mCG.Name = mid0.Cachegroup
+	mCG.ID = mid0.CachegroupID
+	mCGType := tc.CacheGroupMidTypeName
+	mCG.Type = &mCGType
+
+	cgs := []tc.CacheGroupNullable{*eCG, *mCG}
+
+	dss := []DeliveryServiceServer{
+		DeliveryServiceServer{
+			Server:          *server.ID,
+			DeliveryService: *ds0.ID,
+		},
+		DeliveryServiceServer{
+			Server:          *server.ID,
+			DeliveryService: *ds1.ID,
+		},
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+	}
+}
+
+func BenchmarkMakePArentDotConfigTopologiesMSO(b *testing.B) {
+	hdr := &ParentConfigOpts{AddComments: false, HdrComment: "myHeaderComment", GoDirect: "true"}
+
+	ds1 := makeParentDS()
+	ds1.ID = util.IntPtr(43)
+	ds1Type := tc.DSTypeDNS
+	ds1.Type = &ds1Type
+	ds1.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreDrop))
+	ds1.OrgServerFQDN = util.StrPtr("http://ds1.example.net")
+	ds1.Topology = util.StrPtr("t0")
+	ds1.MultiSiteOrigin = util.BoolPtr(true)
+	ds1.ProfileName = util.StrPtr("dsprofile")
+
+	dses := []DeliveryService{*ds1}
+
+	parentConfigParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      tc.AlgorithmConsistentHash,
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+	}
+
+	serverParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       "trafficserver",
+			ConfigFile: "package",
+			Value:      "9",
+			Profiles:   []byte(`["global"]`),
+		},
+	}
+
+	server := makeTestParentServer()
+	server.Cachegroup = util.StrPtr("edgeCG")
+	server.CachegroupID = util.IntPtr(400)
+
+	origin0 := makeTestParentServer()
+	origin0.Cachegroup = util.StrPtr("originCG")
+	origin0.CachegroupID = util.IntPtr(500)
+	origin0.HostName = util.StrPtr("myorigin0")
+	origin0.ID = util.IntPtr(45)
+	setIP(origin0, "192.168.2.2")
+	origin0.Type = tc.OriginTypeName
+	origin0.TypeID = util.IntPtr(991)
+
+	origin1 := makeTestParentServer()
+	origin1.Cachegroup = util.StrPtr("originCG")
+	origin1.CachegroupID = util.IntPtr(500)
+	origin1.HostName = util.StrPtr("myorigin1")
+	origin1.ID = util.IntPtr(46)
+	setIP(origin1, "192.168.2.3")
+	origin1.Type = tc.OriginTypeName
+	origin1.TypeID = util.IntPtr(991)
+
+	servers := []Server{*server, *origin0, *origin1}
+
+	topologies := []tc.Topology{
+		tc.Topology{
+			Name: "t0",
+			Nodes: []tc.TopologyNode{
+				tc.TopologyNode{
+					Cachegroup: "edgeCG",
+					Parents:    []int{1},
+				},
+				tc.TopologyNode{
+					Cachegroup: "originCG",
+				},
+			},
+		},
+	}
+
+	serverCapabilities := map[int]map[ServerCapability]struct{}{}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{}
+
+	eCG := &tc.CacheGroupNullable{}
+	eCG.Name = server.Cachegroup
+	eCG.ID = server.CachegroupID
+	eCG.ParentName = origin0.Cachegroup
+	eCG.ParentCachegroupID = origin0.CachegroupID
+	eCGType := tc.CacheGroupEdgeTypeName
+	eCG.Type = &eCGType
+
+	oCG := &tc.CacheGroupNullable{}
+	oCG.Name = origin0.Cachegroup
+	oCG.ID = origin0.CachegroupID
+	oCGType := tc.CacheGroupOriginTypeName
+	oCG.Type = &oCGType
+
+	cgs := []tc.CacheGroupNullable{*eCG, *oCG}
+
+	dss := []DeliveryServiceServer{
+		DeliveryServiceServer{
+			Server:          *origin0.ID,
+			DeliveryService: *ds1.ID,
+		},
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+	}
+
+	b.Run("MSO topologies default qstring=ignore", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+		}
+	})
+
+	b.Run("MSO topologies param qstring=ignore", func(b *testing.B) {
+		parentConfigParamsWithQstr := append(parentConfigParams, tc.Parameter{
+			Name:       ParentConfigParamQString,
+			ConfigFile: "parent.config",
+			Value:      "ignore",
+			Profiles:   []byte(`["serverprofile"]`),
+		})
+		for i := 0; i < b.N; i++ {
+			MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParamsWithQstr, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+		}
+	})
+
+	b.Run("MSO topologies param qstring=consider", func(b *testing.B) {
+		parentConfigParamsWithQstr := append(parentConfigParams, tc.Parameter{
+			Name:       ParentConfigParamQStringHandling,
+			ConfigFile: "parent.config",
+			Value:      "consider",
+			Profiles:   []byte(`["` + *ds1.ProfileName + `"]`),
+		})
+
+		for i := 0; i < b.N; i++ {
+			MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParamsWithQstr, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+		}
+	})
+
+	b.Run("MSO tpologies param ds qstring consider", func(b *testing.B) {
+		ds1.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreUseInCacheKeyAndPassUp))
+		dses := []DeliveryService{*ds1}
+		for i := 0; i < b.N; i++ {
+			MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+		}
+	})
+}
+
+func BenchmarkMakeParentDotConfigTopologiesMSOWithCapabilities(b *testing.B) {
+	hdr := &ParentConfigOpts{AddComments: false, HdrComment: "myHeaderComment"}
+
+	ds1 := makeParentDS()
+	ds1.ID = util.IntPtr(43)
+	ds1Type := tc.DSTypeDNS
+	ds1.Type = &ds1Type
+	ds1.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreDrop))
+	ds1.OrgServerFQDN = util.StrPtr("http://ds1.example.net")
+	ds1.Topology = util.StrPtr("t0")
+	ds1.MultiSiteOrigin = util.BoolPtr(true)
+
+	dses := []DeliveryService{*ds1}
+
+	parentConfigParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       ParentConfigParamQStringHandling,
+			ConfigFile: "parent.config",
+			Value:      "myQStringHandlingParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      tc.AlgorithmConsistentHash,
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigParamQString,
+			ConfigFile: "parent.config",
+			Value:      "myQstringParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+	}
+
+	serverParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       "trafficserver",
+			ConfigFile: "package",
+			Value:      "7",
+			Profiles:   []byte(`["global"]`),
+		},
+	}
+
+	server := makeTestParentServer()
+	server.Cachegroup = util.StrPtr("edgeCG")
+	server.CachegroupID = util.IntPtr(400)
+	server.ID = util.IntPtr(44)
+
+	origin0 := makeTestParentServer()
+	origin0.Cachegroup = util.StrPtr("originCG")
+	origin0.CachegroupID = util.IntPtr(500)
+	origin0.HostName = util.StrPtr("myorigin0")
+	origin0.ID = util.IntPtr(45)
+	setIP(origin0, "192.168.2.2")
+	origin0.Type = tc.OriginTypeName
+	origin0.TypeID = util.IntPtr(991)
+
+	origin1 := makeTestParentServer()
+	origin1.Cachegroup = util.StrPtr("originCG")
+	origin1.CachegroupID = util.IntPtr(500)
+	origin1.HostName = util.StrPtr("myorigin1")
+	origin1.ID = util.IntPtr(46)
+	setIP(origin1, "192.168.2.3")
+	origin1.Type = tc.OriginTypeName
+	origin1.TypeID = util.IntPtr(991)
+
+	servers := []Server{*server, *origin0, *origin1}
+
+	topologies := []tc.Topology{
+		tc.Topology{
+			Name: "t0",
+			Nodes: []tc.TopologyNode{
+				tc.TopologyNode{
+					Cachegroup: "edgeCG",
+					Parents:    []int{1},
+				},
+				tc.TopologyNode{
+					Cachegroup: "originCG",
+				},
+			},
+		},
+	}
+
+	serverCapabilities := map[int]map[ServerCapability]struct{}{
+		*server.ID: {
+			ServerCapability("FOO"): struct{}{},
+		},
+	}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{
+		*ds1.ID: {
+			ServerCapability("FOO"): struct{}{},
+		},
+	}
+
+	eCG := &tc.CacheGroupNullable{}
+	eCG.Name = server.Cachegroup
+	eCG.ID = server.CachegroupID
+	eCG.ParentName = origin0.Cachegroup
+	eCG.ParentCachegroupID = origin0.CachegroupID
+	eCGType := tc.CacheGroupEdgeTypeName
+	eCG.Type = &eCGType
+
+	oCG := &tc.CacheGroupNullable{}
+	oCG.Name = origin0.Cachegroup
+	oCG.ID = origin0.CachegroupID
+	oCGType := tc.CacheGroupOriginTypeName
+	oCG.Type = &oCGType
+
+	cgs := []tc.CacheGroupNullable{*eCG, *oCG}
+
+	dss := []DeliveryServiceServer{
+		DeliveryServiceServer{
+			Server:          *origin0.ID,
+			DeliveryService: *ds1.ID,
+		},
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+	}
+}
+
+func BenchmarkMakeParentDotConfigMSOWithCapabilities(b *testing.B) {
+	hdr := &ParentConfigOpts{AddComments: false, HdrComment: "myHeaderComment"}
+
+	ds1 := makeParentDS()
+	ds1.ID = util.IntPtr(43)
+	ds1Type := tc.DSTypeDNS
+	ds1.Type = &ds1Type
+	ds1.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreDrop))
+	ds1.OrgServerFQDN = util.StrPtr("http://ds1.example.net")
+	ds1.MultiSiteOrigin = util.BoolPtr(true)
+
+	dses := []DeliveryService{*ds1}
+
+	parentConfigParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       ParentConfigParamQStringHandling,
+			ConfigFile: "parent.config",
+			Value:      "myQStringHandlingParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      tc.AlgorithmConsistentHash,
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigParamQString,
+			ConfigFile: "parent.config",
+			Value:      "myQstringParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+	}
+
+	serverParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       "trafficserver",
+			ConfigFile: "package",
+			Value:      "7",
+			Profiles:   []byte(`["global"]`),
+		},
+	}
+
+	mid := makeTestParentServer()
+	mid.Cachegroup = util.StrPtr("midCG")
+	mid.Type = "MID"
+	mid.CachegroupID = util.IntPtr(400)
+	mid.ID = util.IntPtr(44)
+
+	origin0 := makeTestParentServer()
+	origin0.Cachegroup = util.StrPtr("originCG")
+	origin0.CachegroupID = util.IntPtr(500)
+	origin0.HostName = util.StrPtr("myorigin0")
+	origin0.ID = util.IntPtr(45)
+	setIP(origin0, "192.168.2.2")
+	origin0.Type = tc.OriginTypeName
+	origin0.TypeID = util.IntPtr(991)
+
+	origin1 := makeTestParentServer()
+	origin1.Cachegroup = util.StrPtr("originCG")
+	origin1.CachegroupID = util.IntPtr(500)
+	origin1.HostName = util.StrPtr("myorigin1")
+	origin1.ID = util.IntPtr(46)
+	setIP(origin1, "192.168.2.3")
+	origin1.Type = tc.OriginTypeName
+	origin1.TypeID = util.IntPtr(991)
+
+	servers := []Server{*mid, *origin0, *origin1}
+
+	serverCapabilities := map[int]map[ServerCapability]struct{}{
+		*mid.ID: {
+			ServerCapability("FOO"): struct{}{},
+		},
+	}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{
+		*ds1.ID: {
+			ServerCapability("FOO"): struct{}{},
+		},
+	}
+
+	midCG := &tc.CacheGroupNullable{}
+	midCG.Name = mid.Cachegroup
+	midCG.ID = mid.CachegroupID
+	midCG.ParentName = origin0.Cachegroup
+	midCG.ParentCachegroupID = origin0.CachegroupID
+	midCGType := tc.CacheGroupMidTypeName
+	midCG.Type = &midCGType
+
+	oCG := &tc.CacheGroupNullable{}
+	oCG.Name = origin0.Cachegroup
+	oCG.ID = origin0.CachegroupID
+	oCGType := tc.CacheGroupOriginTypeName
+	oCG.Type = &oCGType
+
+	cgs := []tc.CacheGroupNullable{*midCG, *oCG}
+
+	dss := []DeliveryServiceServer{
+		DeliveryServiceServer{
+			Server:          *origin0.ID,
+			DeliveryService: *ds1.ID,
+		},
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+	topologies := []tc.Topology{}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		MakeParentDotConfig(dses, mid, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+	}
+}
+
+func BenchmarkMakeParentDotConfigTopologiesMSOParams(b *testing.B) {
+	hdr := &ParentConfigOpts{AddComments: false, HdrComment: "myHeaderComment"}
+
+	ds1 := makeParentDS()
+	ds1.ID = util.IntPtr(43)
+	ds1Type := tc.DSTypeDNS
+	ds1.Type = &ds1Type
+	ds1.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreDrop))
+	ds1.OrgServerFQDN = util.StrPtr("http://ds1.example.net")
+	ds1.Topology = util.StrPtr("t0")
+	ds1.ProfileName = util.StrPtr("ds1Profile")
+	ds1.ProfileID = util.IntPtr(994)
+	ds1.MultiSiteOrigin = util.BoolPtr(true)
+
+	dses := []DeliveryService{*ds1}
+
+	parentConfigParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       ParentConfigParamQStringHandling,
+			ConfigFile: "parent.config",
+			Value:      "myQStringHandlingParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      tc.AlgorithmConsistentHash,
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigParamQString,
+			ConfigFile: "parent.config",
+			Value:      "myQstringParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysMSO.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      "consistent_hash",
+			Profiles:   []byte(`["ds1Profile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysMSO.ParentRetry,
+			ConfigFile: "parent.config",
+			Value:      "both",
+			Profiles:   []byte(`["ds1Profile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysMSO.MaxSimpleRetries,
+			ConfigFile: "parent.config",
+			Value:      "14",
+			Profiles:   []byte(`["ds1Profile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysMSO.MaxUnavailableRetries,
+			ConfigFile: "parent.config",
+			Value:      "9",
+			Profiles:   []byte(`["ds1Profile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysMSO.UnavailableRetryResponses,
+			ConfigFile: "parent.config",
+			Value:      `"400,503"`,
+			Profiles:   []byte(`["ds1Profile"]`),
+		},
+	}
+
+	serverParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       "trafficserver",
+			ConfigFile: "package",
+			Value:      "8",
+			Profiles:   []byte(`["global"]`),
+		},
+	}
+
+	server := makeTestParentServer()
+	server.Cachegroup = util.StrPtr("edgeCG")
+	server.CachegroupID = util.IntPtr(400)
+
+	origin0 := makeTestParentServer()
+	origin0.Cachegroup = util.StrPtr("originCG")
+	origin0.CachegroupID = util.IntPtr(500)
+	origin0.HostName = util.StrPtr("myorigin0")
+	origin0.ID = util.IntPtr(45)
+	setIP(origin0, "192.168.2.2")
+	origin0.Type = tc.OriginTypeName
+	origin0.TypeID = util.IntPtr(991)
+
+	origin1 := makeTestParentServer()
+	origin1.Cachegroup = util.StrPtr("originCG")
+	origin1.CachegroupID = util.IntPtr(500)
+	origin1.HostName = util.StrPtr("myorigin1")
+	origin1.ID = util.IntPtr(46)
+	setIP(origin1, "192.168.2.3")
+	origin1.Type = tc.OriginTypeName
+	origin1.TypeID = util.IntPtr(991)
+
+	servers := []Server{*server, *origin0, *origin1}
+
+	topologies := []tc.Topology{
+		tc.Topology{
+			Name: "t0",
+			Nodes: []tc.TopologyNode{
+				tc.TopologyNode{
+					Cachegroup: "edgeCG",
+					Parents:    []int{1},
+				},
+				tc.TopologyNode{
+					Cachegroup: "originCG",
+				},
+			},
+		},
+	}
+
+	serverCapabilities := map[int]map[ServerCapability]struct{}{}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{}
+
+	eCG := &tc.CacheGroupNullable{}
+	eCG.Name = server.Cachegroup
+	eCG.ID = server.CachegroupID
+	eCG.ParentName = origin0.Cachegroup
+	eCG.ParentCachegroupID = origin0.CachegroupID
+	eCGType := tc.CacheGroupEdgeTypeName
+	eCG.Type = &eCGType
+
+	oCG := &tc.CacheGroupNullable{}
+	oCG.Name = origin0.Cachegroup
+	oCG.ID = origin0.CachegroupID
+	oCGType := tc.CacheGroupOriginTypeName
+	oCG.Type = &oCGType
+
+	cgs := []tc.CacheGroupNullable{*eCG, *oCG}
+
+	dss := []DeliveryServiceServer{
+		DeliveryServiceServer{
+			Server:          *origin0.ID,
+			DeliveryService: *ds1.ID,
+		},
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+	}
+}
+
+func BenchmarkMakeParentDotConfigTopologiesParams(b *testing.B) {
+	hdr := &ParentConfigOpts{AddComments: false, HdrComment: "myHeaderComment"}
+
+	ds1 := makeParentDS()
+	ds1.ID = util.IntPtr(43)
+	ds1Type := tc.DSTypeDNS
+	ds1.Type = &ds1Type
+	ds1.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreDrop))
+	ds1.OrgServerFQDN = util.StrPtr("http://ds1.example.net")
+	ds1.Topology = util.StrPtr("t0")
+	ds1.ProfileName = util.StrPtr("ds1Profile")
+	ds1.ProfileID = util.IntPtr(994)
+	ds1.MultiSiteOrigin = util.BoolPtr(true)
+
+	dses := []DeliveryService{*ds1}
+
+	parentConfigParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       ParentConfigParamQStringHandling,
+			ConfigFile: "parent.config",
+			Value:      "myQStringHandlingParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      tc.AlgorithmConsistentHash,
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigParamQString,
+			ConfigFile: "parent.config",
+			Value:      "myQstringParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      "consistent_hash",
+			Profiles:   []byte(`["ds1Profile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.ParentRetry,
+			ConfigFile: "parent.config",
+			Value:      "both",
+			Profiles:   []byte(`["ds1Profile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.MaxSimpleRetries,
+			ConfigFile: "parent.config",
+			Value:      "14",
+			Profiles:   []byte(`["ds1Profile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.MaxUnavailableRetries,
+			ConfigFile: "parent.config",
+			Value:      "9",
+			Profiles:   []byte(`["ds1Profile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.UnavailableRetryResponses,
+			ConfigFile: "parent.config",
+			Value:      `"400,503"`,
+			Profiles:   []byte(`["ds1Profile"]`),
+		},
+	}
+
+	serverParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       "trafficserver",
+			ConfigFile: "package",
+			Value:      "8",
+			Profiles:   []byte(`["global"]`),
+		},
+	}
+
+	server := makeTestParentServer()
+	server.Cachegroup = util.StrPtr("edgeCG")
+	server.CachegroupID = util.IntPtr(400)
+
+	origin0 := makeTestParentServer()
+	origin0.Cachegroup = util.StrPtr("originCG")
+	origin0.CachegroupID = util.IntPtr(500)
+	origin0.HostName = util.StrPtr("myorigin0")
+	origin0.ID = util.IntPtr(45)
+	setIP(origin0, "192.168.2.2")
+	origin0.Type = tc.OriginTypeName
+	origin0.TypeID = util.IntPtr(991)
+
+	origin1 := makeTestParentServer()
+	origin1.Cachegroup = util.StrPtr("originCG")
+	origin1.CachegroupID = util.IntPtr(500)
+	origin1.HostName = util.StrPtr("myorigin1")
+	origin1.ID = util.IntPtr(46)
+	setIP(origin1, "192.168.2.3")
+	origin1.Type = tc.OriginTypeName
+	origin1.TypeID = util.IntPtr(991)
+
+	servers := []Server{*server, *origin0, *origin1}
+
+	topologies := []tc.Topology{
+		tc.Topology{
+			Name: "t0",
+			Nodes: []tc.TopologyNode{
+				tc.TopologyNode{
+					Cachegroup: "edgeCG",
+					Parents:    []int{1},
+				},
+				tc.TopologyNode{
+					Cachegroup: "originCG",
+				},
+			},
+		},
+	}
+
+	serverCapabilities := map[int]map[ServerCapability]struct{}{}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{}
+
+	eCG := &tc.CacheGroupNullable{}
+	eCG.Name = server.Cachegroup
+	eCG.ID = server.CachegroupID
+	eCG.ParentName = origin0.Cachegroup
+	eCG.ParentCachegroupID = origin0.CachegroupID
+	eCGType := tc.CacheGroupEdgeTypeName
+	eCG.Type = &eCGType
+
+	oCG := &tc.CacheGroupNullable{}
+	oCG.Name = origin0.Cachegroup
+	oCG.ID = origin0.CachegroupID
+	oCGType := tc.CacheGroupOriginTypeName
+	oCG.Type = &oCGType
+
+	cgs := []tc.CacheGroupNullable{*eCG, *oCG}
+
+	dss := []DeliveryServiceServer{
+		DeliveryServiceServer{
+			Server:          *origin0.ID,
+			DeliveryService: *ds1.ID,
+		},
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+	}
+}
+
+func BenchmarkMakeParentDotConfigTopologiesNonStandardServerTypes(b *testing.B) {
+	hdr := &ParentConfigOpts{AddComments: false, HdrComment: "myHeaderComment"}
+
+	ds0 := makeParentDS()
+	ds0Type := tc.DSTypeHTTP
+	ds0.Type = &ds0Type
+	ds0.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreUseInCacheKeyAndPassUp))
+	ds0.OrgServerFQDN = util.StrPtr("http://ds0.example.net")
+
+	ds1 := makeParentDS()
+	ds1.ID = util.IntPtr(43)
+	ds1Type := tc.DSTypeDNS
+	ds1.Type = &ds1Type
+	ds1.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreDrop))
+	ds1.OrgServerFQDN = util.StrPtr("http://ds1.example.net")
+	ds1.Topology = util.StrPtr("t0")
+
+	dses := []DeliveryService{*ds0, *ds1}
+
+	parentConfigParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       ParentConfigParamQStringHandling,
+			ConfigFile: "parent.config",
+			Value:      "myQStringHandlingParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      tc.AlgorithmConsistentHash,
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigParamQString,
+			ConfigFile: "parent.config",
+			Value:      "myQstringParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+	}
+
+	serverParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       "trafficserver",
+			ConfigFile: "package",
+			Value:      "7",
+			Profiles:   []byte(`["global"]`),
+		},
+	}
+
+	server := makeTestParentServer()
+	server.Cachegroup = util.StrPtr("edgeCG")
+	server.CachegroupID = util.IntPtr(400)
+
+	mid0 := makeTestParentServer()
+	mid0.Cachegroup = util.StrPtr("midCG")
+	mid0.CachegroupID = util.IntPtr(500)
+	mid0.HostName = util.StrPtr("mymid")
+	mid0.ID = util.IntPtr(45)
+	setIP(mid0, "192.168.2.2")
+	mid0.Type = "MIDSOMETHING-RANDOM"
+
+	mid1 := makeTestParentServer()
+	mid1.Cachegroup = util.StrPtr("midCG")
+	mid1.CachegroupID = util.IntPtr(500)
+	mid1.HostName = util.StrPtr("mymid1")
+	mid1.ID = util.IntPtr(46)
+	mid1.Type = "MID_SOMETHING_ELSE"
+	setIP(mid1, "192.168.2.3")
+
+	servers := []Server{*server, *mid0, *mid1}
+
+	topologies := []tc.Topology{
+		tc.Topology{
+			Name: "t0",
+			Nodes: []tc.TopologyNode{
+				tc.TopologyNode{
+					Cachegroup: "edgeCG",
+					Parents:    []int{1},
+				},
+				tc.TopologyNode{
+					Cachegroup: "midCG",
+				},
+			},
+		},
+	}
+
+	serverCapabilities := map[int]map[ServerCapability]struct{}{}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{}
+
+	eCG := &tc.CacheGroupNullable{}
+	eCG.Name = server.Cachegroup
+	eCG.ID = server.CachegroupID
+	eCG.ParentName = mid0.Cachegroup
+	eCG.ParentCachegroupID = mid0.CachegroupID
+	eCGType := tc.CacheGroupEdgeTypeName
+	eCG.Type = &eCGType
+
+	mCG := &tc.CacheGroupNullable{}
+	mCG.Name = mid0.Cachegroup
+	mCG.ID = mid0.CachegroupID
+	mCGType := tc.CacheGroupMidTypeName
+	mCG.Type = &mCGType
+
+	cgs := []tc.CacheGroupNullable{*eCG, *mCG}
+
+	dss := []DeliveryServiceServer{
+		DeliveryServiceServer{
+			Server:          *server.ID,
+			DeliveryService: *ds0.ID,
+		},
+		DeliveryServiceServer{
+			Server:          *server.ID,
+			DeliveryService: *ds1.ID,
+		},
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+	}
+}
+
+func BenchmarkMakeParentDotConfigSecondaryMode(b *testing.B) {
+	hdr := &ParentConfigOpts{AddComments: false, HdrComment: "myHeaderComment"}
+
+	ds0 := makeParentDS()
+	ds0Type := tc.DSTypeHTTP
+	ds0.Type = &ds0Type
+	ds0.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreUseInCacheKeyAndPassUp))
+	ds0.OrgServerFQDN = util.StrPtr("http://ds0.example.net")
+	ds0.ProfileID = util.IntPtr(311)
+	ds0.ProfileName = util.StrPtr("ds0Profile")
+
+	ds1 := makeParentDS()
+	ds1.ID = util.IntPtr(43)
+	ds1Type := tc.DSTypeDNS
+	ds1.Type = &ds1Type
+	ds1.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreDrop))
+	ds1.OrgServerFQDN = util.StrPtr("http://ds1.example.net")
+	ds1.Topology = util.StrPtr("t0")
+	ds1.ProfileID = util.IntPtr(312)
+	ds1.ProfileName = util.StrPtr("ds1Profile")
+
+	dses := []DeliveryService{*ds0, *ds1}
+
+	parentConfigParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       ParentConfigParamQStringHandling,
+			ConfigFile: "parent.config",
+			Value:      "myQStringHandlingParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      tc.AlgorithmConsistentHash,
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigParamQString,
+			ConfigFile: "parent.config",
+			Value:      "myQstringParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.SecondaryMode,
+			ConfigFile: "parent.config",
+			Value:      "",
+			Profiles:   []byte(`["ds0Profile","ds1Profile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysFirst.SecondaryMode,
+			ConfigFile: "parent.config",
+			Value:      "",
+			Profiles:   []byte(`["ds0Profile","ds1Profile"]`),
+		},
+	}
+
+	serverParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       "trafficserver",
+			ConfigFile: "package",
+			Value:      "8",
+			Profiles:   []byte(`["global"]`),
+		},
+	}
+
+	server := makeTestParentServer()
+	server.Cachegroup = util.StrPtr("edgeCG")
+	server.CachegroupID = util.IntPtr(400)
+
+	mid0 := makeTestParentServer()
+	mid0.Cachegroup = util.StrPtr("midCG")
+	mid0.CachegroupID = util.IntPtr(500)
+	mid0.HostName = util.StrPtr("mymid")
+	mid0.ID = util.IntPtr(45)
+	setIP(mid0, "192.168.2.2")
+
+	mid1 := makeTestParentServer()
+	mid1.Cachegroup = util.StrPtr("midCG2")
+	mid1.CachegroupID = util.IntPtr(501)
+	mid1.HostName = util.StrPtr("mymid1")
+	mid1.ID = util.IntPtr(46)
+	setIP(mid1, "192.168.2.3")
+
+	servers := []Server{*server, *mid0, *mid1}
+
+	topologies := []tc.Topology{
+		tc.Topology{
+			Name: "t0",
+			Nodes: []tc.TopologyNode{
+				tc.TopologyNode{
+					Cachegroup: "edgeCG",
+					Parents:    []int{1, 2},
+				},
+				tc.TopologyNode{
+					Cachegroup: "midCG",
+				},
+				tc.TopologyNode{
+					Cachegroup: "midCG2",
+				},
+			},
+		},
+	}
+
+	serverCapabilities := map[int]map[ServerCapability]struct{}{}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{}
+
+	eCG := &tc.CacheGroupNullable{}
+	eCG.Name = server.Cachegroup
+	eCG.ID = server.CachegroupID
+	eCG.ParentName = mid0.Cachegroup
+	eCG.ParentCachegroupID = mid0.CachegroupID
+	eCG.SecondaryParentName = mid1.Cachegroup
+	eCG.SecondaryParentCachegroupID = mid1.CachegroupID
+	eCGType := tc.CacheGroupEdgeTypeName
+	eCG.Type = &eCGType
+
+	mCG := &tc.CacheGroupNullable{}
+	mCG.Name = mid0.Cachegroup
+	mCG.ID = mid0.CachegroupID
+	mCGType := tc.CacheGroupMidTypeName
+	mCG.Type = &mCGType
+
+	mCG2 := &tc.CacheGroupNullable{}
+	mCG2.Name = mid1.Cachegroup
+	mCG2.ID = mid1.CachegroupID
+	mCGType2 := tc.CacheGroupMidTypeName
+	mCG2.Type = &mCGType2
+
+	cgs := []tc.CacheGroupNullable{*eCG, *mCG, *mCG2}
+
+	dss := []DeliveryServiceServer{
+		DeliveryServiceServer{
+			Server:          *server.ID,
+			DeliveryService: *ds0.ID,
+		},
+		DeliveryServiceServer{
+			Server:          *server.ID,
+			DeliveryService: *ds1.ID,
+		},
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+	}
+}
+
+func BenchmarkMakeParentDotConfigNoSecondaryMode(b *testing.B) {
+	hdr := &ParentConfigOpts{AddComments: false, HdrComment: "myHeaderComment"}
+
+	ds0 := makeParentDS()
+	ds0Type := tc.DSTypeHTTP
+	ds0.Type = &ds0Type
+	ds0.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreUseInCacheKeyAndPassUp))
+	ds0.OrgServerFQDN = util.StrPtr("http://ds0.example.net")
+	ds0.ProfileID = util.IntPtr(311)
+	ds0.ProfileName = util.StrPtr("ds0Profile")
+
+	ds1 := makeParentDS()
+	ds1.ID = util.IntPtr(43)
+	ds1Type := tc.DSTypeDNS
+	ds1.Type = &ds1Type
+	ds1.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreDrop))
+	ds1.OrgServerFQDN = util.StrPtr("http://ds1.example.net")
+	ds1.Topology = util.StrPtr("t0")
+	ds1.ProfileID = util.IntPtr(312)
+	ds1.ProfileName = util.StrPtr("ds1Profile")
+
+	dses := []DeliveryService{*ds0, *ds1}
+
+	parentConfigParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       ParentConfigParamQStringHandling,
+			ConfigFile: "parent.config",
+			Value:      "myQStringHandlingParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      tc.AlgorithmConsistentHash,
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigParamQString,
+			ConfigFile: "parent.config",
+			Value:      "myQstringParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+	}
+
+	serverParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       "trafficserver",
+			ConfigFile: "package",
+			Value:      "8",
+			Profiles:   []byte(`["global"]`),
+		},
+	}
+
+	server := makeTestParentServer()
+	server.Cachegroup = util.StrPtr("edgeCG")
+	server.CachegroupID = util.IntPtr(400)
+
+	mid0 := makeTestParentServer()
+	mid0.Cachegroup = util.StrPtr("midCG")
+	mid0.CachegroupID = util.IntPtr(500)
+	mid0.HostName = util.StrPtr("mymid")
+	mid0.ID = util.IntPtr(45)
+	setIP(mid0, "192.168.2.2")
+
+	mid1 := makeTestParentServer()
+	mid1.Cachegroup = util.StrPtr("midCG2")
+	mid1.CachegroupID = util.IntPtr(501)
+	mid1.HostName = util.StrPtr("mymid1")
+	mid1.ID = util.IntPtr(46)
+	setIP(mid1, "192.168.2.3")
+
+	servers := []Server{*server, *mid0, *mid1}
+
+	topologies := []tc.Topology{
+		tc.Topology{
+			Name: "t0",
+			Nodes: []tc.TopologyNode{
+				tc.TopologyNode{
+					Cachegroup: "edgeCG",
+					Parents:    []int{1, 2},
+				},
+				tc.TopologyNode{
+					Cachegroup: "midCG",
+				},
+				tc.TopologyNode{
+					Cachegroup: "midCG2",
+				},
+			},
+		},
+	}
+
+	serverCapabilities := map[int]map[ServerCapability]struct{}{}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{}
+
+	eCG := &tc.CacheGroupNullable{}
+	eCG.Name = server.Cachegroup
+	eCG.ID = server.CachegroupID
+	eCG.ParentName = mid0.Cachegroup
+	eCG.ParentCachegroupID = mid0.CachegroupID
+	eCG.SecondaryParentName = mid1.Cachegroup
+	eCG.SecondaryParentCachegroupID = mid1.CachegroupID
+	eCGType := tc.CacheGroupEdgeTypeName
+	eCG.Type = &eCGType
+
+	mCG := &tc.CacheGroupNullable{}
+	mCG.Name = mid0.Cachegroup
+	mCG.ID = mid0.CachegroupID
+	mCGType := tc.CacheGroupMidTypeName
+	mCG.Type = &mCGType
+
+	mCG2 := &tc.CacheGroupNullable{}
+	mCG2.Name = mid1.Cachegroup
+	mCG2.ID = mid1.CachegroupID
+	mCGType2 := tc.CacheGroupMidTypeName
+	mCG2.Type = &mCGType2
+
+	cgs := []tc.CacheGroupNullable{*eCG, *mCG, *mCG2}
+
+	dss := []DeliveryServiceServer{
+		DeliveryServiceServer{
+			Server:          *server.ID,
+			DeliveryService: *ds0.ID,
+		},
+		DeliveryServiceServer{
+			Server:          *server.ID,
+			DeliveryService: *ds1.ID,
+		},
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+	}
+}
+
+func BenchmarkMakeParentDotConfigComments(b *testing.B) {
+	hdr := &ParentConfigOpts{AddComments: true, HdrComment: "myHeaderComment"}
+
+	ds0 := makeParentDS()
+	ds0Type := tc.DSTypeHTTP
+	ds0.Type = &ds0Type
+	ds0.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreUseInCacheKeyAndPassUp))
+	ds0.OrgServerFQDN = util.StrPtr("http://ds0.example.net")
+
+	ds1 := makeParentDS()
+	ds1.ID = util.IntPtr(43)
+	ds1Type := tc.DSTypeDNS
+	ds1.Type = &ds1Type
+	ds1.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreDrop))
+	ds1.OrgServerFQDN = util.StrPtr("http://ds1.example.net")
+
+	dses := []DeliveryService{*ds0, *ds1}
+
+	parentConfigParams := []tc.Parameter{
+		{
+			Name:       ParentConfigParamQStringHandling,
+			ConfigFile: "parent.config",
+			Value:      "myQStringHandlingParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      tc.AlgorithmConsistentHash,
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		{
+			Name:       ParentConfigParamQString,
+			ConfigFile: "parent.config",
+			Value:      "myQstringParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+	}
+
+	serverParams := []tc.Parameter{
+		{
+			Name:       "trafficserver",
+			ConfigFile: "package",
+			Value:      "7",
+			Profiles:   []byte(`["global"]`),
+		},
+	}
+
+	server := makeTestParentServer()
+
+	mid0 := makeTestParentServer()
+	mid0.Cachegroup = util.StrPtr("midCG")
+	mid0.HostName = util.StrPtr("mymid0")
+	mid0.ID = util.IntPtr(45)
+	setIP(mid0, "192.168.2.2")
+
+	mid1 := makeTestParentServer()
+	mid1.Cachegroup = util.StrPtr("midCG")
+	mid1.HostName = util.StrPtr("mymid1")
+	mid1.ID = util.IntPtr(46)
+	setIP(mid1, "192.168.2.3")
+
+	servers := []Server{*server, *mid0, *mid1}
+
+	topologies := []tc.Topology{}
+	serverCapabilities := map[int]map[ServerCapability]struct{}{}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{}
+
+	eCG := &tc.CacheGroupNullable{}
+	eCG.Name = server.Cachegroup
+	eCG.ID = server.CachegroupID
+	eCG.ParentName = mid0.Cachegroup
+	eCG.ParentCachegroupID = mid0.CachegroupID
+	eCGType := tc.CacheGroupEdgeTypeName
+	eCG.Type = &eCGType
+
+	mCG := &tc.CacheGroupNullable{}
+	mCG.Name = mid0.Cachegroup
+	mCG.ID = mid0.CachegroupID
+	mCGType := tc.CacheGroupMidTypeName
+	mCG.Type = &mCGType
+
+	cgs := []tc.CacheGroupNullable{*eCG, *mCG}
+
+	dss := []DeliveryServiceServer{
+		{
+			Server:          *server.ID,
+			DeliveryService: *ds0.ID,
+		},
+		{
+			Server:          *server.ID,
+			DeliveryService: *ds1.ID,
+		},
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+	}
+}
+
+func BenchmarkMakeParentDotConfigCommentTopology(b *testing.B) {
+	hdr := &ParentConfigOpts{AddComments: true, HdrComment: "myHeaderComment"}
+
+	ds0 := makeParentDS()
+	ds0Type := tc.DSTypeHTTP
+	ds0.Type = &ds0Type
+	ds0.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreUseInCacheKeyAndPassUp))
+	ds0.OrgServerFQDN = util.StrPtr("http://ds0.example.net")
+	ds0.ProfileID = util.IntPtr(311)
+	ds0.ProfileName = util.StrPtr("ds0Profile")
+
+	ds1 := makeParentDS()
+	ds1.ID = util.IntPtr(43)
+	ds1Type := tc.DSTypeDNS
+	ds1.Type = &ds1Type
+	ds1.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreDrop))
+	ds1.OrgServerFQDN = util.StrPtr("http://ds1.example.net")
+	ds1.Topology = util.StrPtr("t0")
+	ds1.ProfileID = util.IntPtr(312)
+	ds1.ProfileName = util.StrPtr("ds1Profile")
+
+	dses := []DeliveryService{*ds0, *ds1}
+
+	parentConfigParams := []tc.Parameter{
+		{
+			Name:       ParentConfigParamQStringHandling,
+			ConfigFile: "parent.config",
+			Value:      "myQStringHandlingParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      tc.AlgorithmConsistentHash,
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		{
+			Name:       ParentConfigParamQString,
+			ConfigFile: "parent.config",
+			Value:      "myQstringParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+	}
+
+	serverParams := []tc.Parameter{
+		{
+			Name:       "trafficserver",
+			ConfigFile: "package",
+			Value:      "8",
+			Profiles:   []byte(`["global"]`),
+		},
+	}
+
+	server := makeTestParentServer()
+	server.Cachegroup = util.StrPtr("edgeCG")
+	server.CachegroupID = util.IntPtr(400)
+
+	mid0 := makeTestParentServer()
+	mid0.Cachegroup = util.StrPtr("midCG")
+	mid0.CachegroupID = util.IntPtr(500)
+	mid0.HostName = util.StrPtr("mymid")
+	mid0.ID = util.IntPtr(45)
+	setIP(mid0, "192.168.2.2")
+
+	mid1 := makeTestParentServer()
+	mid1.Cachegroup = util.StrPtr("midCG2")
+	mid1.CachegroupID = util.IntPtr(501)
+	mid1.HostName = util.StrPtr("mymid1")
+	mid1.ID = util.IntPtr(46)
+	setIP(mid1, "192.168.2.3")
+
+	servers := []Server{*server, *mid0, *mid1}
+
+	topologies := []tc.Topology{
+		{
+			Name: "t0",
+			Nodes: []tc.TopologyNode{
+				{
+					Cachegroup: "edgeCG",
+					Parents:    []int{1, 2},
+				},
+				{
+					Cachegroup: "midCG",
+				},
+				{
+					Cachegroup: "midCG2",
+				},
+			},
+		},
+	}
+
+	serverCapabilities := map[int]map[ServerCapability]struct{}{}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{}
+
+	eCG := &tc.CacheGroupNullable{}
+	eCG.Name = server.Cachegroup
+	eCG.ID = server.CachegroupID
+	eCG.ParentName = mid0.Cachegroup
+	eCG.ParentCachegroupID = mid0.CachegroupID
+	eCG.SecondaryParentName = mid1.Cachegroup
+	eCG.SecondaryParentCachegroupID = mid1.CachegroupID
+	eCGType := tc.CacheGroupEdgeTypeName
+	eCG.Type = &eCGType
+
+	mCG := &tc.CacheGroupNullable{}
+	mCG.Name = mid0.Cachegroup
+	mCG.ID = mid0.CachegroupID
+	mCGType := tc.CacheGroupMidTypeName
+	mCG.Type = &mCGType
+
+	mCG2 := &tc.CacheGroupNullable{}
+	mCG2.Name = mid1.Cachegroup
+	mCG2.ID = mid1.CachegroupID
+	mCGType2 := tc.CacheGroupMidTypeName
+	mCG2.Type = &mCGType2
+
+	cgs := []tc.CacheGroupNullable{*eCG, *mCG, *mCG2}
+
+	dss := []DeliveryServiceServer{
+		{
+			Server:          *server.ID,
+			DeliveryService: *ds0.ID,
+		},
+		{
+			Server:          *server.ID,
+			DeliveryService: *ds1.ID,
+		},
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+	}
+}
+
+func BenchmarkMakeParentDotConfigHTTPSOrigin(b *testing.B) {
+	hdr := &ParentConfigOpts{AddComments: false, HdrComment: "myHeaderComment"}
+
+	ds0 := makeParentDS()
+	ds0Type := tc.DSTypeHTTP
+	ds0.Type = &ds0Type
+	ds0.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreUseInCacheKeyAndPassUp))
+	ds0.OrgServerFQDN = util.StrPtr("https://ds0.example.net")
+
+	ds1 := makeParentDS()
+	ds1.ID = util.IntPtr(43)
+	ds1Type := tc.DSTypeDNS
+	ds1.Type = &ds1Type
+	ds1.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreDrop))
+	ds1.OrgServerFQDN = util.StrPtr("http://ds1.example.net")
+
+	dses := []DeliveryService{*ds0, *ds1}
+
+	parentConfigParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       ParentConfigParamQStringHandling,
+			ConfigFile: "parent.config",
+			Value:      "myQStringHandlingParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      tc.AlgorithmConsistentHash,
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigParamQString,
+			ConfigFile: "parent.config",
+			Value:      "myQstringParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+	}
+
+	serverParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       "trafficserver",
+			ConfigFile: "package",
+			Value:      "7",
+			Profiles:   []byte(`["global"]`),
+		},
+	}
+
+	server := makeTestParentServer()
+
+	mid0 := makeTestParentServer()
+	mid0.Cachegroup = util.StrPtr("midCG")
+	mid0.HostName = util.StrPtr("mymid0")
+	mid0.ID = util.IntPtr(45)
+	setIP(mid0, "192.168.2.2")
+
+	mid1 := makeTestParentServer()
+	mid1.Cachegroup = util.StrPtr("midCG")
+	mid1.HostName = util.StrPtr("mymid1")
+	mid1.ID = util.IntPtr(46)
+	setIP(mid1, "192.168.2.3")
+
+	servers := []Server{*server, *mid0, *mid1}
+
+	topologies := []tc.Topology{}
+	serverCapabilities := map[int]map[ServerCapability]struct{}{}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{}
+
+	eCG := &tc.CacheGroupNullable{}
+	eCG.Name = server.Cachegroup
+	eCG.ID = server.CachegroupID
+	eCG.ParentName = mid0.Cachegroup
+	eCG.ParentCachegroupID = mid0.CachegroupID
+	eCGType := tc.CacheGroupEdgeTypeName
+	eCG.Type = &eCGType
+
+	mCG := &tc.CacheGroupNullable{}
+	mCG.Name = mid0.Cachegroup
+	mCG.ID = mid0.CachegroupID
+	mCGType := tc.CacheGroupMidTypeName
+	mCG.Type = &mCGType
+
+	cgs := []tc.CacheGroupNullable{*eCG, *mCG}
+
+	dss := []DeliveryServiceServer{
+		DeliveryServiceServer{
+			Server:          *server.ID,
+			DeliveryService: *ds0.ID,
+		},
+		DeliveryServiceServer{
+			Server:          *server.ID,
+			DeliveryService: *ds1.ID,
+		},
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+	}
+}
+
+func BenchmarkMakeParentDotConfigHTTPSOriginTopology(b *testing.B) {
+	hdr := &ParentConfigOpts{AddComments: true, HdrComment: "myHeaderComment"}
+
+	ds0 := makeParentDS()
+	ds0Type := tc.DSTypeHTTP
+	ds0.Type = &ds0Type
+	ds0.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreUseInCacheKeyAndPassUp))
+	ds0.OrgServerFQDN = util.StrPtr("https://ds0.example.net")
+	ds0.ProfileID = util.IntPtr(311)
+	ds0.ProfileName = util.StrPtr("ds0Profile")
+
+	ds1 := makeParentDS()
+	ds1.ID = util.IntPtr(43)
+	ds1Type := tc.DSTypeDNS
+	ds1.Type = &ds1Type
+	ds1.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreDrop))
+	ds1.OrgServerFQDN = util.StrPtr("http://ds1.example.net")
+	ds1.Topology = util.StrPtr("t0")
+	ds1.ProfileID = util.IntPtr(312)
+	ds1.ProfileName = util.StrPtr("ds1Profile")
+
+	dses := []DeliveryService{*ds0, *ds1}
+
+	parentConfigParams := []tc.Parameter{
+		{
+			Name:       ParentConfigParamQStringHandling,
+			ConfigFile: "parent.config",
+			Value:      "myQStringHandlingParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      tc.AlgorithmConsistentHash,
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		{
+			Name:       ParentConfigParamQString,
+			ConfigFile: "parent.config",
+			Value:      "myQstringParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+	}
+
+	serverParams := []tc.Parameter{
+		{
+			Name:       "trafficserver",
+			ConfigFile: "package",
+			Value:      "8",
+			Profiles:   []byte(`["global"]`),
+		},
+	}
+
+	server := makeTestParentServer()
+	server.Cachegroup = util.StrPtr("edgeCG")
+	server.CachegroupID = util.IntPtr(400)
+
+	mid0 := makeTestParentServer()
+	mid0.Cachegroup = util.StrPtr("midCG")
+	mid0.CachegroupID = util.IntPtr(500)
+	mid0.HostName = util.StrPtr("mymid")
+	mid0.ID = util.IntPtr(45)
+	setIP(mid0, "192.168.2.2")
+
+	mid1 := makeTestParentServer()
+	mid1.Cachegroup = util.StrPtr("midCG2")
+	mid1.CachegroupID = util.IntPtr(501)
+	mid1.HostName = util.StrPtr("mymid1")
+	mid1.ID = util.IntPtr(46)
+	setIP(mid1, "192.168.2.3")
+
+	servers := []Server{*server, *mid0, *mid1}
+
+	topologies := []tc.Topology{
+		{
+			Name: "t0",
+			Nodes: []tc.TopologyNode{
+				{
+					Cachegroup: "edgeCG",
+					Parents:    []int{1, 2},
+				},
+				{
+					Cachegroup: "midCG",
+				},
+				{
+					Cachegroup: "midCG2",
+				},
+			},
+		},
+	}
+
+	serverCapabilities := map[int]map[ServerCapability]struct{}{}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{}
+
+	eCG := &tc.CacheGroupNullable{}
+	eCG.Name = server.Cachegroup
+	eCG.ID = server.CachegroupID
+	eCG.ParentName = mid0.Cachegroup
+	eCG.ParentCachegroupID = mid0.CachegroupID
+	eCG.SecondaryParentName = mid1.Cachegroup
+	eCG.SecondaryParentCachegroupID = mid1.CachegroupID
+	eCGType := tc.CacheGroupEdgeTypeName
+	eCG.Type = &eCGType
+
+	mCG := &tc.CacheGroupNullable{}
+	mCG.Name = mid0.Cachegroup
+	mCG.ID = mid0.CachegroupID
+	mCGType := tc.CacheGroupMidTypeName
+	mCG.Type = &mCGType
+
+	mCG2 := &tc.CacheGroupNullable{}
+	mCG2.Name = mid1.Cachegroup
+	mCG2.ID = mid1.CachegroupID
+	mCGType2 := tc.CacheGroupMidTypeName
+	mCG2.Type = &mCGType2
+
+	cgs := []tc.CacheGroupNullable{*eCG, *mCG, *mCG2}
+
+	dss := []DeliveryServiceServer{
+		{
+			Server:          *server.ID,
+			DeliveryService: *ds0.ID,
+		},
+		{
+			Server:          *server.ID,
+			DeliveryService: *ds1.ID,
+		},
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+	}
+}
+
+func BenchmarkMakePArentDotConfigNoParentNoTopology(b *testing.B) {
+	hdr := &ParentConfigOpts{AddComments: false, HdrComment: "myHeaderComment", GoDirect: "true"}
+
+	ds0 := makeParentDS()
+	ds0Type := tc.DSTypeHTTPLive
+	ds0.Type = &ds0Type
+	ds0.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreUseInCacheKeyAndPassUp))
+	ds0.OrgServerFQDN = util.StrPtr("http://ds0-origin.example.net")
+
+	dses := []DeliveryService{*ds0}
+
+	parentConfigParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       ParentConfigParamQStringHandling,
+			ConfigFile: "parent.config",
+			Value:      "myQStringHandlingParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      tc.AlgorithmConsistentHash,
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigParamQString,
+			ConfigFile: "parent.config",
+			Value:      "myQstringParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+	}
+
+	serverParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       "trafficserver",
+			ConfigFile: "package",
+			Value:      "7",
+			Profiles:   []byte(`["global"]`),
+		},
+	}
+
+	server := makeTestParentServer()
+
+	mid0 := makeTestParentServer()
+	mid0.Cachegroup = util.StrPtr("midCG")
+	mid0.HostName = util.StrPtr("mymid0")
+	mid0.ID = util.IntPtr(45)
+	setIP(mid0, "192.168.2.2")
+
+	mid1 := makeTestParentServer()
+	mid1.Cachegroup = util.StrPtr("midCG")
+	mid1.HostName = util.StrPtr("mymid1")
+	mid1.ID = util.IntPtr(46)
+	setIP(mid1, "192.168.2.3")
+
+	servers := []Server{*server, *mid0, *mid1}
+
+	topologies := []tc.Topology{}
+	serverCapabilities := map[int]map[ServerCapability]struct{}{}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{}
+
+	eCG := &tc.CacheGroupNullable{}
+	eCG.Name = server.Cachegroup
+	eCG.ID = server.CachegroupID
+	eCG.ParentName = mid0.Cachegroup
+	eCG.ParentCachegroupID = mid0.CachegroupID
+	eCGType := tc.CacheGroupEdgeTypeName
+	eCG.Type = &eCGType
+
+	mCG := &tc.CacheGroupNullable{}
+	mCG.Name = mid0.Cachegroup
+	mCG.ID = mid0.CachegroupID
+	mCGType := tc.CacheGroupMidTypeName
+	mCG.Type = &mCGType
+
+	cgs := []tc.CacheGroupNullable{*eCG, *mCG}
+
+	dss := []DeliveryServiceServer{
+		DeliveryServiceServer{
+			Server:          *server.ID,
+			DeliveryService: *ds0.ID,
+		},
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+	}
+}
+
+func BenchmarkMakeParentDotConfigHTTPSOriginTopologyNoPrimaryParent(b *testing.B) {
+	hdr := &ParentConfigOpts{AddComments: true, HdrComment: "myHeaderComment"}
+
+	ds0 := makeParentDS()
+	ds0Type := tc.DSTypeHTTP
+	ds0.Type = &ds0Type
+	ds0.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreUseInCacheKeyAndPassUp))
+	ds0.OrgServerFQDN = util.StrPtr("https://ds0.example.net")
+	ds0.ProfileID = util.IntPtr(311)
+	ds0.ProfileName = util.StrPtr("ds0Profile")
+
+	ds1 := makeParentDS()
+	ds1.ID = util.IntPtr(43)
+	ds1Type := tc.DSTypeDNS
+	ds1.Type = &ds1Type
+	ds1.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreDrop))
+	ds1.OrgServerFQDN = util.StrPtr("http://ds1.example.net")
+	ds1.Topology = util.StrPtr("t0")
+	ds1.ProfileID = util.IntPtr(312)
+	ds1.ProfileName = util.StrPtr("ds1Profile")
+
+	dses := []DeliveryService{*ds0, *ds1}
+
+	parentConfigParams := []tc.Parameter{
+		{
+			Name:       ParentConfigParamQStringHandling,
+			ConfigFile: "parent.config",
+			Value:      "myQStringHandlingParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      tc.AlgorithmConsistentHash,
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		{
+			Name:       ParentConfigParamQString,
+			ConfigFile: "parent.config",
+			Value:      "myQstringParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+	}
+
+	serverParams := []tc.Parameter{
+		{
+			Name:       "trafficserver",
+			ConfigFile: "package",
+			Value:      "8",
+			Profiles:   []byte(`["global"]`),
+		},
+	}
+
+	server := makeTestParentServer()
+	server.Cachegroup = util.StrPtr("edgeCG")
+	server.CachegroupID = util.IntPtr(400)
+
+	mid0 := makeTestParentServer()
+	mid0.Cachegroup = util.StrPtr("midCG")
+	mid0.CachegroupID = util.IntPtr(500)
+	mid0.HostName = util.StrPtr("mymid")
+	mid0.ID = util.IntPtr(45)
+	mid0.Status = util.StrPtr(string(tc.CacheStatusAdminDown))
+	setIP(mid0, "192.168.2.2")
+
+	mid1 := makeTestParentServer()
+	mid1.Cachegroup = util.StrPtr("midCG2")
+	mid1.CachegroupID = util.IntPtr(501)
+	mid1.HostName = util.StrPtr("mymid1")
+	mid1.ID = util.IntPtr(46)
+	setIP(mid1, "192.168.2.3")
+
+	servers := []Server{*server, *mid0, *mid1}
+
+	topologies := []tc.Topology{
+		{
+			Name: "t0",
+			Nodes: []tc.TopologyNode{
+				{
+					Cachegroup: "edgeCG",
+					Parents:    []int{1, 2},
+				},
+				{
+					Cachegroup: "midCG",
+				},
+				{
+					Cachegroup: "midCG2",
+				},
+			},
+		},
+	}
+
+	serverCapabilities := map[int]map[ServerCapability]struct{}{}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{}
+
+	eCG := &tc.CacheGroupNullable{}
+	eCG.Name = server.Cachegroup
+	eCG.ID = server.CachegroupID
+	eCG.ParentName = mid0.Cachegroup
+	eCG.ParentCachegroupID = mid0.CachegroupID
+	eCG.SecondaryParentName = mid1.Cachegroup
+	eCG.SecondaryParentCachegroupID = mid1.CachegroupID
+	eCGType := tc.CacheGroupEdgeTypeName
+	eCG.Type = &eCGType
+
+	mCG := &tc.CacheGroupNullable{}
+	mCG.Name = mid0.Cachegroup
+	mCG.ID = mid0.CachegroupID
+	mCGType := tc.CacheGroupMidTypeName
+	mCG.Type = &mCGType
+
+	mCG2 := &tc.CacheGroupNullable{}
+	mCG2.Name = mid1.Cachegroup
+	mCG2.ID = mid1.CachegroupID
+	mCGType2 := tc.CacheGroupMidTypeName
+	mCG2.Type = &mCGType2
+
+	cgs := []tc.CacheGroupNullable{*eCG, *mCG, *mCG2}
+
+	dss := []DeliveryServiceServer{
+		{
+			Server:          *server.ID,
+			DeliveryService: *ds0.ID,
+		},
+		{
+			Server:          *server.ID,
+			DeliveryService: *ds1.ID,
+		},
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+	}
+}
+
+func BenchmarkMakePArentDotConfigMergeParentGroupTopology(b *testing.B) {
+	hdr := &ParentConfigOpts{AddComments: true, HdrComment: "myHeaderComment"}
+
+	ds0 := makeParentDS()
+	ds0Type := tc.DSTypeHTTP
+	ds0.Type = &ds0Type
+	ds0.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreUseInCacheKeyAndPassUp))
+	ds0.OrgServerFQDN = util.StrPtr("http://ds0.example.net")
+	ds0.ProfileID = util.IntPtr(311)
+	ds0.ProfileName = util.StrPtr("ds0Profile")
+	ds0.Topology = util.StrPtr("t0")
+
+	dses := []DeliveryService{*ds0}
+
+	parentConfigParams := []tc.Parameter{
+		{
+			Name:       ParentConfigParamQStringHandling,
+			ConfigFile: "parent.config",
+			Value:      "myQStringHandlingParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      tc.AlgorithmConsistentHash,
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		{
+			Name:       ParentConfigParamQString,
+			ConfigFile: "parent.config",
+			Value:      "myQstringParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		{
+			Name:       ParentConfigParamMergeGroups,
+			ConfigFile: "parent.config",
+			Value:      "oplCG0 oplCG1",
+			Profiles:   []byte(`["ds0Profile"]`),
+		},
+	}
+
+	serverParams := []tc.Parameter{
+		{
+			Name:       "trafficserver",
+			ConfigFile: "package",
+			Value:      "8",
+			Profiles:   []byte(`["global"]`),
+		},
+	}
+
+	edge := makeTestParentServer()
+	edge.Cachegroup = util.StrPtr("edgeCG")
+	edge.CachegroupID = util.IntPtr(400)
+
+	mid0 := makeTestParentServer()
+	mid0.Cachegroup = util.StrPtr("midCG0")
+	mid0.CachegroupID = util.IntPtr(500)
+	mid0.HostName = util.StrPtr("mymid0")
+	mid0.ID = util.IntPtr(45)
+	setIP(mid0, "192.168.2.2")
+
+	mid1 := makeTestParentServer()
+	mid1.Cachegroup = util.StrPtr("midCG1")
+	mid1.CachegroupID = util.IntPtr(501)
+	mid1.HostName = util.StrPtr("mymid1")
+	mid1.ID = util.IntPtr(46)
+	setIP(mid0, "192.168.2.3")
+
+	opl0 := makeTestParentServer()
+	opl0.Cachegroup = util.StrPtr("oplCG0")
+	opl0.CachegroupID = util.IntPtr(600)
+	opl0.HostName = util.StrPtr("myopl0")
+	opl0.ID = util.IntPtr(47)
+	setIP(opl0, "192.168.2.4")
+
+	opl1 := makeTestParentServer()
+	opl1.Cachegroup = util.StrPtr("oplCG1")
+	opl1.CachegroupID = util.IntPtr(601)
+	opl1.HostName = util.StrPtr("myopl1")
+	opl1.ID = util.IntPtr(48)
+	setIP(opl0, "192.168.2.5")
+
+	servers := []Server{*edge, *mid0, *mid1, *opl0, *opl1}
+
+	topologies := []tc.Topology{
+		{
+			Name: "t0",
+			Nodes: []tc.TopologyNode{
+				{
+					Cachegroup: "edgeCG",
+					Parents:    []int{1, 2},
+				},
+				{
+					Cachegroup: "midCG0",
+					Parents:    []int{3, 4},
+				},
+				{
+					Cachegroup: "midCG1",
+					Parents:    []int{3, 4},
+				},
+				{
+					Cachegroup: "oplCG0",
+				},
+				{
+					Cachegroup: "oplCG1",
+				},
+			},
+		},
+	}
+
+	serverCapabilities := map[int]map[ServerCapability]struct{}{}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{}
+
+	eCG := &tc.CacheGroupNullable{}
+	eCG.Name = edge.Cachegroup
+	eCG.ID = edge.CachegroupID
+	eCG.ParentName = mid0.Cachegroup
+	eCG.ParentCachegroupID = mid0.CachegroupID
+	eCG.SecondaryParentName = mid1.Cachegroup
+	eCG.SecondaryParentCachegroupID = mid1.CachegroupID
+	eCGType := tc.CacheGroupEdgeTypeName
+	eCG.Type = &eCGType
+
+	mCG0 := &tc.CacheGroupNullable{}
+	mCG0.Name = mid0.Cachegroup
+	mCG0.ID = mid0.CachegroupID
+	mCG0.ParentName = opl0.Cachegroup
+	mCG0.ParentCachegroupID = opl0.CachegroupID
+	mCG0.SecondaryParentName = opl1.Cachegroup
+	mCG0.SecondaryParentCachegroupID = opl1.CachegroupID
+	mCGType0 := tc.CacheGroupMidTypeName
+	mCG0.Type = &mCGType0
+
+	mCG1 := &tc.CacheGroupNullable{}
+	mCG1.Name = mid1.Cachegroup
+	mCG1.ID = mid1.CachegroupID
+	mCG1.ParentName = opl1.Cachegroup
+	mCG1.ParentCachegroupID = opl1.CachegroupID
+	mCG1.SecondaryParentName = opl0.Cachegroup
+	mCG1.SecondaryParentCachegroupID = opl0.CachegroupID
+	mCGType1 := tc.CacheGroupMidTypeName
+	mCG1.Type = &mCGType1
+
+	oCG0 := &tc.CacheGroupNullable{}
+	oCG0.Name = opl0.Cachegroup
+	oCG0.ID = opl0.CachegroupID
+	oCGType0 := tc.CacheGroupMidTypeName
+	oCG0.Type = &oCGType0
+
+	oCG1 := &tc.CacheGroupNullable{}
+	oCG1.Name = opl1.Cachegroup
+	oCG1.ID = opl1.CachegroupID
+	oCGType1 := tc.CacheGroupMidTypeName
+	oCG1.Type = &oCGType1
+
+	cgs := []tc.CacheGroupNullable{*eCG, *mCG0, *mCG1, *oCG0, *oCG1}
+
+	dss := []DeliveryServiceServer{
+		{
+			Server:          *edge.ID,
+			DeliveryService: *ds0.ID,
+		},
+		{
+			Server:          *mid0.ID,
+			DeliveryService: *ds0.ID,
+		},
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		MakeParentDotConfig(dses, edge, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+	}
+}
+
+func BenchmarkMakeParentDotConfigTopologiesServerMultipleProfileParams(b *testing.B) {
+	hdr := &ParentConfigOpts{AddComments: false, HdrComment: "myHeaderComment"}
+
+	ds1 := makeParentDS()
+	ds1.ID = util.IntPtr(43)
+	ds1Type := tc.DSTypeDNS
+	ds1.Type = &ds1Type
+	ds1.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreDrop))
+	ds1.OrgServerFQDN = util.StrPtr("http://ds1.example.net")
+	ds1.Topology = util.StrPtr("t0")
+	ds1.ProfileName = util.StrPtr("ds1Profile")
+	ds1.ProfileID = util.IntPtr(994)
+	ds1.MultiSiteOrigin = util.BoolPtr(true)
+
+	dses := []DeliveryService{*ds1}
+
+	parentConfigParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       ParentConfigParamQStringHandling,
+			ConfigFile: "parent.config",
+			Value:      "myQStringHandlingParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      tc.AlgorithmConsistentHash,
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigParamQString,
+			ConfigFile: "parent.config",
+			Value:      "myQstringParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      "consistent_hash",
+			Profiles:   []byte(`["ds1Profile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.ParentRetry,
+			ConfigFile: "parent.config",
+			Value:      "both",
+			Profiles:   []byte(`["ds1Profile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.MaxSimpleRetries,
+			ConfigFile: "parent.config",
+			Value:      "14",
+			Profiles:   []byte(`["ds1Profile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.MaxUnavailableRetries,
+			ConfigFile: "parent.config",
+			Value:      "9",
+			Profiles:   []byte(`["ds1Profile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.UnavailableRetryResponses,
+			ConfigFile: "parent.config",
+			Value:      `"400,503"`,
+			Profiles:   []byte(`["ds1Profile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigCacheParamWeight,
+			ConfigFile: "parent.config",
+			Value:      "100",
+			Profiles:   []byte(`["serverprofile1"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigCacheParamWeight,
+			ConfigFile: "parent.config",
+			Value:      "200",
+			Profiles:   []byte(`["serverprofile0"]`),
+		},
+	}
+
+	serverParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       "trafficserver",
+			ConfigFile: "package",
+			Value:      "8",
+			Profiles:   []byte(`["global"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigCacheParamWeight,
+			ConfigFile: "parent.config",
+			Value:      "100",
+			Profiles:   []byte(`["serverprofile0"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigCacheParamWeight,
+			ConfigFile: "parent.config",
+			Value:      "200",
+			Profiles:   []byte(`["serverprofile1"]`),
+		},
+	}
+
+	server := makeTestParentServer()
+	server.Cachegroup = util.StrPtr("edgeCG")
+	server.CachegroupID = util.IntPtr(400)
+
+	origin0 := makeTestParentServer()
+	origin0.Cachegroup = util.StrPtr("originCG")
+	origin0.CachegroupID = util.IntPtr(500)
+	origin0.HostName = util.StrPtr("myorigin0")
+	origin0.ID = util.IntPtr(45)
+	setIP(origin0, "192.168.2.2")
+	origin0.Type = tc.OriginTypeName
+	origin0.TypeID = util.IntPtr(991)
+	origin0.ProfileNames = []string{"serverprofile0", "serverprofile1"}
+
+	origin1 := makeTestParentServer()
+	origin1.Cachegroup = util.StrPtr("originCG")
+	origin1.CachegroupID = util.IntPtr(500)
+	origin1.HostName = util.StrPtr("myorigin1")
+	origin1.ID = util.IntPtr(46)
+	setIP(origin1, "192.168.2.3")
+	origin1.Type = tc.OriginTypeName
+	origin1.TypeID = util.IntPtr(991)
+	origin1.ProfileNames = []string{"serverprofile1", "serverprofile0"}
+
+	servers := []Server{*server, *origin0, *origin1}
+
+	topologies := []tc.Topology{
+		tc.Topology{
+			Name: "t0",
+			Nodes: []tc.TopologyNode{
+				tc.TopologyNode{
+					Cachegroup: "edgeCG",
+					Parents:    []int{1},
+				},
+				tc.TopologyNode{
+					Cachegroup: "originCG",
+				},
+			},
+		},
+	}
+
+	serverCapabilities := map[int]map[ServerCapability]struct{}{}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{}
+
+	eCG := &tc.CacheGroupNullable{}
+	eCG.Name = server.Cachegroup
+	eCG.ID = server.CachegroupID
+	eCG.ParentName = origin0.Cachegroup
+	eCG.ParentCachegroupID = origin0.CachegroupID
+	eCGType := tc.CacheGroupEdgeTypeName
+	eCG.Type = &eCGType
+
+	oCG := &tc.CacheGroupNullable{}
+	oCG.Name = origin0.Cachegroup
+	oCG.ID = origin0.CachegroupID
+	oCGType := tc.CacheGroupOriginTypeName
+	oCG.Type = &oCGType
+
+	cgs := []tc.CacheGroupNullable{*eCG, *oCG}
+
+	dss := []DeliveryServiceServer{
+		DeliveryServiceServer{
+			Server:          *origin0.ID,
+			DeliveryService: *ds1.ID,
+		},
+		DeliveryServiceServer{
+			Server:          *origin1.ID,
+			DeliveryService: *ds1.ID,
+		},
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+	}
+}
+
+func BenchmarkMakeParentDotConfigFirstLastNoTopo(b *testing.B) {
+	hdr := &ParentConfigOpts{AddComments: true, HdrComment: "myHeaderComment", GoDirect: "true"}
+
+	// Non Toplogy ds
+	ds0 := makeParentDS()
+	ds0Type := tc.DSTypeHTTP
+	ds0.Type = &ds0Type
+	ds0.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreUseInCacheKeyAndPassUp))
+	ds0.OrgServerFQDN = util.StrPtr("https://ds0.example.net")
+	ds0.ProfileID = util.IntPtr(311)
+	ds0.ProfileName = util.StrPtr("ds0Profile")
+
+	// Non Toplogy ds, MSO
+	ds1 := makeParentDS()
+	ds1Type := tc.DSTypeHTTP
+	ds1.Type = &ds1Type
+	ds1.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreUseInCacheKeyAndPassUp))
+	ds1.OrgServerFQDN = util.StrPtr("https://ds1.example.net")
+	ds1.ProfileID = util.IntPtr(312)
+	ds1.ProfileName = util.StrPtr("ds0Profile")
+	ds1.MultiSiteOrigin = util.BoolPtr(true)
+
+	dses := []DeliveryService{*ds0, *ds1}
+
+	parentConfigParams := []tc.Parameter{
+		{
+			Name:       ParentConfigParamQStringHandling,
+			ConfigFile: "parent.config",
+			Value:      "myQStringHandlingParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      tc.AlgorithmConsistentHash,
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		{
+			Name:       ParentConfigParamQString,
+			ConfigFile: "parent.config",
+			Value:      "myQstringParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+	}
+
+	// Create set of DS params
+	params := map[string]string{
+		ParentConfigRetryKeysDefault.Algorithm: "strict",
+		ParentConfigRetryKeysMSO.Algorithm:     "strict",
+		ParentConfigRetryKeysFirst.Algorithm:   "true",
+		ParentConfigRetryKeysInner.Algorithm:   "latched",
+		ParentConfigRetryKeysLast.Algorithm:    "true",
+
+		ParentConfigRetryKeysDefault.SecondaryMode: "exhaust",
+		ParentConfigRetryKeysMSO.SecondaryMode:     "exhaust",
+		ParentConfigRetryKeysFirst.SecondaryMode:   "alternate",
+		ParentConfigRetryKeysInner.SecondaryMode:   "peering",
+		ParentConfigRetryKeysLast.SecondaryMode:    "alternate",
+
+		ParentConfigRetryKeysMSO.ParentRetry:   "unavailable_server_retry",
+		ParentConfigRetryKeysFirst.ParentRetry: "both",
+		ParentConfigRetryKeysInner.ParentRetry: "both",
+		ParentConfigRetryKeysLast.ParentRetry:  "both",
+
+		ParentConfigRetryKeysDefault.MaxSimpleRetries: "11",
+		ParentConfigRetryKeysMSO.MaxSimpleRetries:     "11",
+		ParentConfigRetryKeysFirst.MaxSimpleRetries:   "12",
+		ParentConfigRetryKeysInner.MaxSimpleRetries:   "13",
+		ParentConfigRetryKeysLast.MaxSimpleRetries:    "14",
+
+		ParentConfigRetryKeysDefault.SimpleRetryResponses: `"401"`,
+		ParentConfigRetryKeysMSO.SimpleRetryResponses:     `"401"`,
+		ParentConfigRetryKeysFirst.SimpleRetryResponses:   `"401,402"`,
+		ParentConfigRetryKeysInner.SimpleRetryResponses:   `"401,403"`,
+		ParentConfigRetryKeysLast.SimpleRetryResponses:    `"401,404"`,
+
+		ParentConfigRetryKeysDefault.MaxUnavailableRetries: "21",
+		ParentConfigRetryKeysMSO.MaxUnavailableRetries:     "21",
+		ParentConfigRetryKeysFirst.MaxUnavailableRetries:   "22",
+		ParentConfigRetryKeysInner.MaxUnavailableRetries:   "23",
+		ParentConfigRetryKeysLast.MaxUnavailableRetries:    "24",
+
+		ParentConfigRetryKeysDefault.UnavailableRetryResponses: `"501"`,
+		ParentConfigRetryKeysMSO.UnavailableRetryResponses:     `"501"`,
+		ParentConfigRetryKeysFirst.UnavailableRetryResponses:   `"501,502"`,
+		ParentConfigRetryKeysInner.UnavailableRetryResponses:   `"501,503"`,
+		ParentConfigRetryKeysLast.UnavailableRetryResponses:    `"501,504"`,
+		ParentConfigGoDirectEdge:                               "false",
+	}
+
+	// Assign them to the profile
+	for key, val := range params {
+		tcparam := tc.Parameter{
+			Name:       key,
+			ConfigFile: "parent.config",
+			Value:      val,
+			Profiles:   []byte(`["ds0Profile"]`),
+		}
+		parentConfigParams = append(parentConfigParams, tcparam)
+	}
+
+	serverParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       "trafficserver",
+			ConfigFile: "package",
+			Value:      "9",
+			Profiles:   []byte(`["global"]`),
+		},
+	}
+
+	edge := makeTestParentServer()
+	edge.Cachegroup = util.StrPtr("edgeCG")
+	edge.CachegroupID = util.IntPtr(400)
+
+	mid0 := makeTestParentServer()
+	mid0.Cachegroup = util.StrPtr("midCG0")
+	mid0.CachegroupID = util.IntPtr(500)
+	mid0.HostName = util.StrPtr("mymid0")
+	mid0.ID = util.IntPtr(45)
+	setIP(mid0, "192.168.2.2")
+
+	mid1 := makeTestParentServer()
+	mid1.Cachegroup = util.StrPtr("midCG1")
+	mid1.CachegroupID = util.IntPtr(501)
+	mid1.HostName = util.StrPtr("mymid1")
+	mid1.ID = util.IntPtr(46)
+	setIP(mid0, "192.168.2.3")
+
+	org0 := makeTestParentServer()
+	org0.Cachegroup = util.StrPtr("orgCG0")
+	org0.CachegroupID = util.IntPtr(502)
+	org0.HostName = util.StrPtr("myorg0")
+	org0.ID = util.IntPtr(47)
+	setIP(org0, "192.168.2.4")
+	org0.Type = tc.OriginTypeName
+	org0.TypeID = util.IntPtr(991)
+
+	org1 := makeTestParentServer()
+	org1.Cachegroup = util.StrPtr("orgCG1")
+	org1.CachegroupID = util.IntPtr(503)
+	org1.HostName = util.StrPtr("myorg1")
+	org1.ID = util.IntPtr(48)
+	setIP(org1, "192.168.2.5")
+	org1.Type = tc.OriginTypeName
+	org1.TypeID = util.IntPtr(991)
+
+	servers := []Server{*edge, *mid0, *mid1, *org0, *org1}
+
+	topologies := []tc.Topology{
+		{
+			Name: "t0",
+			Nodes: []tc.TopologyNode{
+				{
+					Cachegroup: "edgeCG",
+					Parents:    []int{1, 2},
+				},
+				{
+					Cachegroup: "midCG0",
+					Parents:    []int{3, 4},
+				},
+				{
+					Cachegroup: "midCG1",
+					Parents:    []int{3, 4},
+				},
+				{
+					Cachegroup: "orgCG0",
+				},
+				{
+					Cachegroup: "orgCG1",
+				},
+			},
+		},
+	}
+
+	serverCapabilities := map[int]map[ServerCapability]struct{}{}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{}
+
+	eCG := &tc.CacheGroupNullable{}
+	eCG.Name = edge.Cachegroup
+	eCG.ID = edge.CachegroupID
+	eCG.ParentName = mid0.Cachegroup
+	eCG.ParentCachegroupID = mid0.CachegroupID
+	eCG.SecondaryParentName = mid1.Cachegroup
+	eCG.SecondaryParentCachegroupID = mid1.CachegroupID
+	eCGType := tc.CacheGroupEdgeTypeName
+	eCG.Type = &eCGType
+
+	mCG0 := &tc.CacheGroupNullable{}
+	mCG0.Name = mid0.Cachegroup
+	mCG0.ID = mid0.CachegroupID
+	mCG0.ParentName = org0.Cachegroup
+	mCG0.ParentCachegroupID = org0.CachegroupID
+	mCG0.SecondaryParentName = org1.Cachegroup
+	mCG0.SecondaryParentCachegroupID = org1.CachegroupID
+	mCGType0 := tc.CacheGroupMidTypeName
+	mCG0.Type = &mCGType0
+
+	mCG1 := &tc.CacheGroupNullable{}
+	mCG1.Name = mid1.Cachegroup
+	mCG1.ID = mid1.CachegroupID
+	mCG1.ParentName = org1.Cachegroup
+	mCG1.ParentCachegroupID = org1.CachegroupID
+	mCG1.SecondaryParentName = org0.Cachegroup
+	mCG1.SecondaryParentCachegroupID = org0.CachegroupID
+	mCGType1 := tc.CacheGroupMidTypeName
+	mCG1.Type = &mCGType1
+
+	oCG0 := &tc.CacheGroupNullable{}
+	oCG0.Name = org0.Cachegroup
+	oCG0.ID = org0.CachegroupID
+	oCGType0 := tc.CacheGroupOriginTypeName
+	oCG0.Type = &oCGType0
+
+	oCG1 := &tc.CacheGroupNullable{}
+	oCG1.Name = org1.Cachegroup
+	oCG1.ID = org1.CachegroupID
+	oCGType1 := tc.CacheGroupOriginTypeName
+	oCG1.Type = &oCGType1
+
+	cgs := []tc.CacheGroupNullable{*eCG, *mCG0, *mCG1, *oCG0, *oCG1}
+
+	dss := []DeliveryServiceServer{
+		{Server: *edge.ID, DeliveryService: *ds0.ID},
+		{Server: *mid0.ID, DeliveryService: *ds0.ID},
+		{Server: *mid1.ID, DeliveryService: *ds0.ID},
+		{Server: *org0.ID, DeliveryService: *ds0.ID},
+		{Server: *org1.ID, DeliveryService: *ds0.ID},
+
+		{Server: *edge.ID, DeliveryService: *ds1.ID},
+		{Server: *mid0.ID, DeliveryService: *ds1.ID},
+		{Server: *mid1.ID, DeliveryService: *ds1.ID},
+		{Server: *org0.ID, DeliveryService: *ds1.ID},
+		{Server: *org1.ID, DeliveryService: *ds1.ID},
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+
+	b.ResetTimer()
+
+	b.Run("Edge config", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			MakeParentDotConfig(dses, edge, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+		}
+	})
+	b.Run("Mid config", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			MakeParentDotConfig(dses, mid0, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+		}
+	})
+	b.Run("Mid2 config", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			MakeParentDotConfig(dses, mid1, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+		}
+	})
+}
+
+func BenchmarkMakeParentDotConfigFirstInnerLastTopology(b *testing.B) {
+	hdr := &ParentConfigOpts{AddComments: true, HdrComment: "myHeaderComment", GoDirect: "true"}
+
+	// Toplogy ds, MSO
+	ds0 := makeParentDS()
+	ds0Type := tc.DSTypeHTTP
+	ds0.Type = &ds0Type
+	ds0.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreUseInCacheKeyAndPassUp))
+	ds0.OrgServerFQDN = util.StrPtr("http://ds0.example.net")
+	ds0.ProfileID = util.IntPtr(311)
+	ds0.ProfileName = util.StrPtr("ds0Profile")
+	ds0.MultiSiteOrigin = util.BoolPtr(true)
+	ds0.Topology = util.StrPtr("t0")
+
+	// Toplogy ds, non MSO
+	ds1 := makeParentDS()
+	ds1.ID = util.IntPtr(44)
+	ds1Type := tc.DSTypeHTTP
+	ds1.Type = &ds1Type
+	ds1.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreUseInCacheKeyAndPassUp))
+	ds1.OrgServerFQDN = util.StrPtr("http://ds1.example.net")
+	ds1.ProfileID = util.IntPtr(311)
+	ds1.ProfileName = util.StrPtr("ds0Profile")
+	ds1.Topology = util.StrPtr("t0")
+
+	dses := []DeliveryService{*ds0, *ds1}
+
+	parentConfigParams := []tc.Parameter{
+		{
+			Name:       ParentConfigParamQStringHandling,
+			ConfigFile: "parent.config",
+			Value:      "myQStringHandlingParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      tc.AlgorithmConsistentHash,
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		{
+			Name:       ParentConfigParamQString,
+			ConfigFile: "parent.config",
+			Value:      "myQstringParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+	}
+
+	// Create set of DS params
+	params := map[string]string{
+		ParentConfigRetryKeysDefault.Algorithm: "strict",
+		ParentConfigRetryKeysMSO.Algorithm:     "strict",
+		ParentConfigRetryKeysFirst.Algorithm:   "true",
+		ParentConfigRetryKeysInner.Algorithm:   "latched",
+		ParentConfigRetryKeysLast.Algorithm:    "true",
+
+		ParentConfigRetryKeysDefault.SecondaryMode: "exhaust",
+		ParentConfigRetryKeysMSO.SecondaryMode:     "exhaust",
+		ParentConfigRetryKeysFirst.SecondaryMode:   "alternate",
+		ParentConfigRetryKeysInner.SecondaryMode:   "peering",
+		ParentConfigRetryKeysLast.SecondaryMode:    "alternate",
+
+		ParentConfigRetryKeysMSO.ParentRetry:   "unavailable_server_retry",
+		ParentConfigRetryKeysFirst.ParentRetry: "both",
+		ParentConfigRetryKeysInner.ParentRetry: "both",
+		ParentConfigRetryKeysLast.ParentRetry:  "both",
+
+		ParentConfigRetryKeysDefault.MaxSimpleRetries: "11",
+		ParentConfigRetryKeysMSO.MaxSimpleRetries:     "11",
+		ParentConfigRetryKeysFirst.MaxSimpleRetries:   "12",
+		ParentConfigRetryKeysInner.MaxSimpleRetries:   "13",
+		ParentConfigRetryKeysLast.MaxSimpleRetries:    "14",
+
+		ParentConfigRetryKeysDefault.SimpleRetryResponses: `"401"`,
+		ParentConfigRetryKeysMSO.SimpleRetryResponses:     `"401"`,
+		ParentConfigRetryKeysFirst.SimpleRetryResponses:   `"401,402"`,
+		ParentConfigRetryKeysInner.SimpleRetryResponses:   `"401,403"`,
+		ParentConfigRetryKeysLast.SimpleRetryResponses:    `"401,404"`,
+
+		ParentConfigRetryKeysDefault.MaxUnavailableRetries: "21",
+		ParentConfigRetryKeysMSO.MaxUnavailableRetries:     "21",
+		ParentConfigRetryKeysFirst.MaxUnavailableRetries:   "22",
+		ParentConfigRetryKeysInner.MaxUnavailableRetries:   "23",
+		ParentConfigRetryKeysLast.MaxUnavailableRetries:    "24",
+
+		ParentConfigRetryKeysDefault.UnavailableRetryResponses: `"501"`,
+		ParentConfigRetryKeysMSO.UnavailableRetryResponses:     `"501"`,
+		ParentConfigRetryKeysFirst.UnavailableRetryResponses:   `"501,502"`,
+		ParentConfigRetryKeysInner.UnavailableRetryResponses:   `"501,503"`,
+		ParentConfigRetryKeysLast.UnavailableRetryResponses:    `"501,504"`,
+		ParentConfigGoDirectFirst:                              "false",
+		ParentConfigGoDirectInner:                              "false",
+	}
+
+	// Assign them to the profile
+	for key, val := range params {
+		tcparam := tc.Parameter{
+			Name:       key,
+			ConfigFile: "parent.config",
+			Value:      val,
+			Profiles:   []byte(`["ds0Profile"]`),
+		}
+		parentConfigParams = append(parentConfigParams, tcparam)
+	}
+
+	serverParams := []tc.Parameter{
+		{
+			Name:       "trafficserver",
+			ConfigFile: "package",
+			Value:      "9",
+			Profiles:   []byte(`["global"]`),
+		},
+	}
+
+	edge := makeTestParentServer()
+	edge.Cachegroup = util.StrPtr("edgeCG")
+	edge.CachegroupID = util.IntPtr(400)
+	edge.HostName = util.StrPtr("edge")
+
+	mid0 := makeTestParentServer()
+	mid0.Cachegroup = util.StrPtr("midCG0")
+	mid0.CachegroupID = util.IntPtr(500)
+	mid0.HostName = util.StrPtr("mid0")
+	mid0.ID = util.IntPtr(45)
+	setIP(mid0, "192.168.2.2")
+
+	mid1 := makeTestParentServer()
+	mid1.Cachegroup = util.StrPtr("midCG1")
+	mid1.CachegroupID = util.IntPtr(501)
+	mid1.HostName = util.StrPtr("mid1")
+	mid1.ID = util.IntPtr(46)
+	setIP(mid1, "192.168.2.3")
+
+	opl0 := makeTestParentServer()
+	opl0.Cachegroup = util.StrPtr("oplCG0")
+	opl0.CachegroupID = util.IntPtr(502)
+	opl0.HostName = util.StrPtr("opl0")
+	opl0.ID = util.IntPtr(47)
+	setIP(opl0, "192.168.2.4")
+
+	opl1 := makeTestParentServer()
+	opl1.Cachegroup = util.StrPtr("oplCG1")
+	opl1.CachegroupID = util.IntPtr(503)
+	opl1.HostName = util.StrPtr("opl1")
+	opl1.ID = util.IntPtr(48)
+	setIP(opl1, "192.168.2.5")
+
+	org0 := makeTestParentServer()
+	org0.Cachegroup = util.StrPtr("orgCG0")
+	org0.CachegroupID = util.IntPtr(504)
+	org0.HostName = util.StrPtr("org0")
+	org0.ID = util.IntPtr(49)
+	setIP(org0, "192.168.2.6")
+	org0.Type = tc.OriginTypeName
+	org0.TypeID = util.IntPtr(991)
+
+	org1 := makeTestParentServer()
+	org1.Cachegroup = util.StrPtr("orgCG1")
+	org1.CachegroupID = util.IntPtr(505)
+	org1.HostName = util.StrPtr("org1")
+	org1.ID = util.IntPtr(50)
+	setIP(org1, "192.168.2.7")
+	org1.Type = tc.OriginTypeName
+	org1.TypeID = util.IntPtr(991)
+
+	servers := []Server{*edge, *mid0, *mid1, *opl0, *opl1, *org0, *org1}
+
+	topologies := []tc.Topology{
+		{
+			Name: "t0",
+			Nodes: []tc.TopologyNode{
+				{
+					Cachegroup: "edgeCG",
+					Parents:    []int{1, 2},
+				},
+				{
+					Cachegroup: "midCG0",
+					Parents:    []int{3, 4},
+				},
+				{
+					Cachegroup: "midCG1",
+					Parents:    []int{3, 4},
+				},
+				{
+					Cachegroup: "oplCG0",
+					Parents:    []int{5, 6},
+				},
+				{
+					Cachegroup: "oplCG1",
+					Parents:    []int{5, 6},
+				},
+				{
+					Cachegroup: "orgCG0",
+				},
+				{
+					Cachegroup: "orgCG1",
+				},
+			},
+		},
+	}
+
+	serverCapabilities := map[int]map[ServerCapability]struct{}{}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{}
+
+	eCG := &tc.CacheGroupNullable{}
+	eCG.Name = edge.Cachegroup
+	eCG.ID = edge.CachegroupID
+	eCG.ParentName = mid0.Cachegroup
+	eCG.ParentCachegroupID = mid0.CachegroupID
+	eCG.SecondaryParentName = mid1.Cachegroup
+	eCG.SecondaryParentCachegroupID = mid1.CachegroupID
+	eCGType := tc.CacheGroupEdgeTypeName
+	eCG.Type = &eCGType
+
+	mCG0 := &tc.CacheGroupNullable{}
+	mCG0.Name = mid0.Cachegroup
+	mCG0.ID = mid0.CachegroupID
+	mCG0.ParentName = opl0.Cachegroup
+	mCG0.ParentCachegroupID = opl0.CachegroupID
+	mCG0.SecondaryParentName = opl1.Cachegroup
+	mCG0.SecondaryParentCachegroupID = opl1.CachegroupID
+	mCGType0 := tc.CacheGroupMidTypeName
+	mCG0.Type = &mCGType0
+
+	mCG1 := &tc.CacheGroupNullable{}
+	mCG1.Name = mid1.Cachegroup
+	mCG1.ID = mid1.CachegroupID
+	mCG1.ParentName = opl1.Cachegroup
+	mCG1.ParentCachegroupID = opl1.CachegroupID
+	mCG1.SecondaryParentName = opl0.Cachegroup
+	mCG1.SecondaryParentCachegroupID = opl0.CachegroupID
+	mCGType1 := tc.CacheGroupMidTypeName
+	mCG1.Type = &mCGType1
+
+	oplCG0 := &tc.CacheGroupNullable{}
+	oplCG0.Name = opl0.Cachegroup
+	oplCG0.ID = opl0.CachegroupID
+	oplCG0.ParentName = org0.Cachegroup
+	oplCG0.ParentCachegroupID = org0.CachegroupID
+	oplCG0.SecondaryParentName = org1.Cachegroup
+	oplCG0.SecondaryParentCachegroupID = org1.CachegroupID
+	oplCGType0 := tc.CacheGroupMidTypeName
+	oplCG0.Type = &oplCGType0
+
+	oplCG1 := &tc.CacheGroupNullable{}
+	oplCG1.Name = opl1.Cachegroup
+	oplCG1.ID = opl1.CachegroupID
+	oplCG1.ParentName = org1.Cachegroup
+	oplCG1.ParentCachegroupID = org1.CachegroupID
+	oplCG1.SecondaryParentName = org0.Cachegroup
+	oplCG1.SecondaryParentCachegroupID = org0.CachegroupID
+	oplCGType1 := tc.CacheGroupMidTypeName
+	oplCG1.Type = &oplCGType1
+
+	oCG0 := &tc.CacheGroupNullable{}
+	oCG0.Name = org0.Cachegroup
+	oCG0.ID = org0.CachegroupID
+	oCGType0 := tc.CacheGroupOriginTypeName
+	oCG0.Type = &oCGType0
+
+	oCG1 := &tc.CacheGroupNullable{}
+	oCG1.Name = org1.Cachegroup
+	oCG1.ID = org1.CachegroupID
+	oCGType1 := tc.CacheGroupOriginTypeName
+	oCG1.Type = &oCGType1
+
+	cgs := []tc.CacheGroupNullable{*eCG, *mCG0, *mCG1, *oplCG0, *oplCG1, *oCG0, *oCG1}
+
+	dss := []DeliveryServiceServer{
+		/*
+			{Server: *edge.ID, DeliveryService: *ds0.ID},
+			{Server: *mid0.ID, DeliveryService: *ds0.ID},
+			{Server: *mid1.ID, DeliveryService: *ds0.ID},
+			{Server: *opl0.ID, DeliveryService: *ds0.ID},
+			{Server: *opl1.ID, DeliveryService: *ds0.ID},
+			{Server: *org0.ID, DeliveryService: *ds0.ID},
+			{Server: *org1.ID, DeliveryService: *ds0.ID},
+
+			{Server: *edge.ID, DeliveryService: *ds1.ID},
+			{Server: *mid0.ID, DeliveryService: *ds1.ID},
+			{Server: *mid1.ID, DeliveryService: *ds1.ID},
+			{Server: *opl0.ID, DeliveryService: *ds1.ID},
+			{Server: *opl1.ID, DeliveryService: *ds1.ID},
+			{Server: *org0.ID, DeliveryService: *ds1.ID},
+			{Server: *org1.ID, DeliveryService: *ds1.ID},
+		*/
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+
+	b.ResetTimer()
+
+	b.Run("Edge config", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			MakeParentDotConfig(dses, edge, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+		}
+	})
+	b.Run("Mid config", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			MakeParentDotConfig(dses, mid0, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+		}
+	})
+	b.Run("Opl config", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			MakeParentDotConfig(dses, opl0, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+		}
+	})
+}
+
+func BenchmarkMakeParentDotConfigOptVersion(b *testing.B) {
+	ds1 := makeParentDS()
+	ds1.ID = util.IntPtr(43)
+	ds1Type := tc.DSTypeDNS
+	ds1.Type = &ds1Type
+	ds1.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreDrop))
+	ds1.OrgServerFQDN = util.StrPtr("http://ds1.example.net")
+	ds1.Topology = util.StrPtr("t0")
+	ds1.ProfileName = util.StrPtr("ds1Profile")
+	ds1.ProfileID = util.IntPtr(994)
+	ds1.MultiSiteOrigin = util.BoolPtr(true)
+
+	dses := []DeliveryService{*ds1}
+
+	parentConfigParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       ParentConfigParamQStringHandling,
+			ConfigFile: "parent.config",
+			Value:      "myQStringHandlingParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      tc.AlgorithmConsistentHash,
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigParamQString,
+			ConfigFile: "parent.config",
+			Value:      "myQstringParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      "consistent_hash",
+			Profiles:   []byte(`["ds1Profile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.ParentRetry,
+			ConfigFile: "parent.config",
+			Value:      "both",
+			Profiles:   []byte(`["ds1Profile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.MaxSimpleRetries,
+			ConfigFile: "parent.config",
+			Value:      "14",
+			Profiles:   []byte(`["ds1Profile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.MaxUnavailableRetries,
+			ConfigFile: "parent.config",
+			Value:      "9",
+			Profiles:   []byte(`["ds1Profile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.UnavailableRetryResponses,
+			ConfigFile: "parent.config",
+			Value:      `"400,503"`,
+			Profiles:   []byte(`["ds1Profile"]`),
+		},
+	}
+
+	server := makeTestParentServer()
+	server.Cachegroup = util.StrPtr("edgeCG")
+	server.CachegroupID = util.IntPtr(400)
+
+	origin0 := makeTestParentServer()
+	origin0.Cachegroup = util.StrPtr("originCG")
+	origin0.CachegroupID = util.IntPtr(500)
+	origin0.HostName = util.StrPtr("myorigin0")
+	origin0.ID = util.IntPtr(45)
+	setIP(origin0, "192.168.2.2")
+	origin0.Type = tc.OriginTypeName
+	origin0.TypeID = util.IntPtr(991)
+
+	origin1 := makeTestParentServer()
+	origin1.Cachegroup = util.StrPtr("originCG")
+	origin1.CachegroupID = util.IntPtr(500)
+	origin1.HostName = util.StrPtr("myorigin1")
+	origin1.ID = util.IntPtr(46)
+	setIP(origin1, "192.168.2.3")
+	origin1.Type = tc.OriginTypeName
+	origin1.TypeID = util.IntPtr(991)
+
+	servers := []Server{*server, *origin0, *origin1}
+
+	topologies := []tc.Topology{
+		tc.Topology{
+			Name: "t0",
+			Nodes: []tc.TopologyNode{
+				tc.TopologyNode{
+					Cachegroup: "edgeCG",
+					Parents:    []int{1},
+				},
+				tc.TopologyNode{
+					Cachegroup: "originCG",
+				},
+			},
+		},
+	}
+
+	serverCapabilities := map[int]map[ServerCapability]struct{}{}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{}
+
+	eCG := &tc.CacheGroupNullable{}
+	eCG.Name = server.Cachegroup
+	eCG.ID = server.CachegroupID
+	eCG.ParentName = origin0.Cachegroup
+	eCG.ParentCachegroupID = origin0.CachegroupID
+	eCGType := tc.CacheGroupEdgeTypeName
+	eCG.Type = &eCGType
+
+	oCG := &tc.CacheGroupNullable{}
+	oCG.Name = origin0.Cachegroup
+	oCG.ID = origin0.CachegroupID
+	oCGType := tc.CacheGroupOriginTypeName
+	oCG.Type = &oCGType
+
+	cgs := []tc.CacheGroupNullable{*eCG, *oCG}
+
+	dss := []DeliveryServiceServer{
+		DeliveryServiceServer{
+			Server:          *origin0.ID,
+			DeliveryService: *ds1.ID,
+		},
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+
+	b.ResetTimer()
+
+	b.Run("Package Parameter 9 with no Opt ATSVersion has ATS 9 feature", func(b *testing.B) {
+		serverParams := []tc.Parameter{
+			tc.Parameter{
+				Name:       "trafficserver",
+				ConfigFile: "package",
+				Value:      "9",
+				Profiles:   []byte(`["global"]`),
+			},
+		}
+
+		opt := &ParentConfigOpts{AddComments: false, HdrComment: "myHeaderComment"}
+
+		for i := 0; i < b.N; i++ {
+			MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, opt)
+		}
+	})
+
+	b.Run("Package Parameter 5 with no Opt ATSVersion does not have the feature it shouldn't", func(b *testing.B) {
+		serverParams := []tc.Parameter{
+			tc.Parameter{
+				Name:       "trafficserver",
+				ConfigFile: "package",
+				Value:      "5",
+				Profiles:   []byte(`["global"]`),
+			},
+		}
+		opt := &ParentConfigOpts{AddComments: false, HdrComment: "myHeaderComment"}
+
+		for i := 0; i < b.N; i++ {
+			MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, opt)
+		}
+	})
+
+	b.Run("Package Parameter 5 with Opt ATSVersion 9 uses Opt not Param", func(b *testing.B) {
+		serverParams := []tc.Parameter{
+			tc.Parameter{
+				Name:       "trafficserver",
+				ConfigFile: "package",
+				Value:      "5",
+				Profiles:   []byte(`["global"]`),
+			},
+		}
+
+		opt := &ParentConfigOpts{
+			AddComments:     false,
+			HdrComment:      "myHeaderComment",
+			ATSMajorVersion: 9,
+		}
+
+		for i := 0; i < b.N; i++ {
+			MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, opt)
+		}
+	})
+}
+
+func BenchmarkMakeParentDotConfigOriginIP(b *testing.B) {
+	hdr := &ParentConfigOpts{AddComments: false, HdrComment: "myHeaderComment"}
+
+	ds0 := makeParentDS()
+	ds0Type := tc.DSTypeHTTP
+	ds0.Type = &ds0Type
+	ds0.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreUseInCacheKeyAndPassUp))
+	ds0.OrgServerFQDN = util.StrPtr("http://192.0.2.42")
+
+	ds1 := makeParentDS()
+	ds1.ID = util.IntPtr(43)
+	ds1Type := tc.DSTypeDNS
+	ds1.Type = &ds1Type
+	ds1.QStringIgnore = util.IntPtr(int(tc.QStringIgnoreDrop))
+	ds1.OrgServerFQDN = util.StrPtr("http://ds1.example.net")
+	ds1.Topology = util.StrPtr("t0")
+
+	dses := []DeliveryService{*ds0, *ds1}
+
+	parentConfigParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       ParentConfigParamQStringHandling,
+			ConfigFile: "parent.config",
+			Value:      "myQStringHandlingParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigRetryKeysDefault.Algorithm,
+			ConfigFile: "parent.config",
+			Value:      tc.AlgorithmConsistentHash,
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+		tc.Parameter{
+			Name:       ParentConfigParamQString,
+			ConfigFile: "parent.config",
+			Value:      "myQstringParam",
+			Profiles:   []byte(`["serverprofile"]`),
+		},
+	}
+
+	serverParams := []tc.Parameter{
+		tc.Parameter{
+			Name:       "trafficserver",
+			ConfigFile: "package",
+			Value:      "7",
+			Profiles:   []byte(`["global"]`),
+		},
+	}
+
+	server := makeTestParentServer()
+	server.Cachegroup = util.StrPtr("edgeCG")
+	server.CachegroupID = util.IntPtr(400)
+
+	mid0 := makeTestParentServer()
+	mid0.Cachegroup = util.StrPtr("midCG")
+	mid0.CachegroupID = util.IntPtr(500)
+	mid0.HostName = util.StrPtr("mymid")
+	mid0.ID = util.IntPtr(45)
+	setIP(mid0, "192.168.2.2")
+
+	mid1 := makeTestParentServer()
+	mid1.Cachegroup = util.StrPtr("midCG")
+	mid1.CachegroupID = util.IntPtr(500)
+	mid1.HostName = util.StrPtr("mymid1")
+	mid1.ID = util.IntPtr(46)
+	setIP(mid1, "192.168.2.3")
+
+	servers := []Server{*server, *mid0, *mid1}
+
+	topologies := []tc.Topology{
+		tc.Topology{
+			Name: "t0",
+			Nodes: []tc.TopologyNode{
+				tc.TopologyNode{
+					Cachegroup: "edgeCG",
+					Parents:    []int{1},
+				},
+				tc.TopologyNode{
+					Cachegroup: "midCG",
+				},
+			},
+		},
+	}
+
+	serverCapabilities := map[int]map[ServerCapability]struct{}{}
+	dsRequiredCapabilities := map[int]map[ServerCapability]struct{}{}
+
+	eCG := &tc.CacheGroupNullable{}
+	eCG.Name = server.Cachegroup
+	eCG.ID = server.CachegroupID
+	eCG.ParentName = mid0.Cachegroup
+	eCG.ParentCachegroupID = mid0.CachegroupID
+	eCGType := tc.CacheGroupEdgeTypeName
+	eCG.Type = &eCGType
+
+	mCG := &tc.CacheGroupNullable{}
+	mCG.Name = mid0.Cachegroup
+	mCG.ID = mid0.CachegroupID
+	mCGType := tc.CacheGroupMidTypeName
+	mCG.Type = &mCGType
+
+	cgs := []tc.CacheGroupNullable{*eCG, *mCG}
+
+	dss := []DeliveryServiceServer{
+		DeliveryServiceServer{
+			Server:          *server.ID,
+			DeliveryService: *ds0.ID,
+		},
+		DeliveryServiceServer{
+			Server:          *server.ID,
+			DeliveryService: *ds1.ID,
+		},
+	}
+	cdn := &tc.CDN{
+		DomainName: "cdndomain.example",
+		Name:       "my-cdn-name",
+	}
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		MakeParentDotConfig(dses, server, servers, topologies, serverParams, parentConfigParams, serverCapabilities, dsRequiredCapabilities, cgs, dss, cdn, hdr)
+	}
+}
