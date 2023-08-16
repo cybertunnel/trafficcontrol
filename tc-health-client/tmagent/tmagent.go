@@ -418,6 +418,8 @@ func (pi *ParentInfo) findATrafficMonitor() (string, error) {
 		return "", errors.New("there are no available traffic monitors")
 	}
 
+	log.Debugf("Obtained a total of %d available traffic monitors", lth)
+
 	// build an array of available traffic monitors.
 	tms := []string{}
 	for fqdn, _ := range toData.Monitors {
@@ -636,12 +638,17 @@ func (pi *ParentInfo) GetTOData(cfg *config.Cfg) error {
 		}
 	}
 
-	srvs, _, err := toData.TOClient.GetServers(toclient.NewRequestOptions())
+	srvs, reqInf, err := toData.TOClient.GetServers(toclient.NewRequestOptions())
 	if err != nil {
 		// next time we'll login again and get a new session.
 		toData.TOClient = nil
 		pi.TOData.Set(toData)
 		return errors.New("error fetching Trafficmonitor server list: " + err.Error())
+	} else if reqInf.StatusCode < 200 || reqInf.StatusCode >= 400 {
+		// There was an error, so let's login again and get a new session.
+		toData.TOClient = nil
+		pi.TOData.Set(toData)
+		return fmt.Errorf("error fetching Trafficmonitor server list. Obtained a non-200 and non-300 status code of %d", reqInf.StatusCode)
 	}
 
 	toData.Monitors = map[string]struct{}{}
